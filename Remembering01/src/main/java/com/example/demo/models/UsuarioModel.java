@@ -12,7 +12,7 @@ import javax.persistence.Table;
 @Table(name = "usuario")
 public class UsuarioModel {
 
-   // Recuerda que para enlazar a una DB hay que definir la cadena de conexión en el pom.xml.Hay una propiedad obligatoria en la que tengo que especificar si la db existe o no,asinto
+   // Recuerda que para enlazar a una DB hay que definir la cadena de conexión en el application.properties.Hay una propiedad obligatoria en la que tengo que especificar si la db existe o no,asinto
 
    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
    @Column(unique = true,nullable = false)

@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 @Service
 public class UsuarioService {
 
-   // minuto 10 VSCode es Dios
    /*
     * Con @Autowired Spring traerá la instancia que metí en el Spring Container ,
     * lo hizo @Repository??

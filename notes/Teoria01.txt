@@ -1,0 +1,14 @@
+						TEORIA REMEMBERING 01
+
+Fuente: https://www.youtube.com/watch?v=vTu2HQrXtyw
+
+Creo un proyecto con Spring Initialzr.De momento con Maven.Dependencias JAP y MYSQL.Usaré VSCode ya que es mejor que STS.
+Recuerda que es en el archivo application.properties donde debo especificar los settings de ccnexión a la DB.
+
+Parra ejecutar el proyecto uso:
+./mvnw spring-boot:run
+
+		PROYECTO DOS SPRING SECURITY WITH JWT (BOTH ACCESSS AND REFRESH TOKENS)
+
+Source: https://www.youtube.com/watch?v=VVn9OG9nfH0
+
