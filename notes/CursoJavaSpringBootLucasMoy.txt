@@ -1,0 +1,76 @@
+			CURSO JAVA FULLSTACK( SPRING BOOT, HIBERNATE, JWT, API REST)
+
+Source: https://www.youtube.com/watch?v=7vHzVN0EiQc
+
+NOTA:cuando lanzamos una request a un servidor como usuario le pasamos headers como Accept-Language: en-US o el User-Agent.De esta forma el servidor devolverá un sitio web en español o inglés,etc...
+
+El autor recomienda bajarse la Community Edition de IntelliJ y usar Spring Initialzr.
+
+								MAVEN Y GRADLE
+
+Maven y Gradles son herramientas que permiten descargar librerias(ellos en sí también serán otra librería más).Ambos usarán un archivo donde especifico todas las librerias que debe descargar mi proyecto(un package.json).
+Siempre que compila un proyecto lo primero que hace es visitar este archivo y descargar todas las librerias especificadas en ese archivo.
+
+Maven es anterior a Gradle,siendo este último un poco más rápido y optimizado,pero apenas hay diferencia.Tampoco cambia mucho entre usar una libreria u otra.(npm vs yarn).
+
+Con todo esto creo un proyecto con empaquetado a war,ojo.Añado Spring Web
+
+					INSTALAR MAVEN Y JDK
+
+Voy a apache maven y alli veré que puedo descargar binaries | source files(los dos comprimidos).Descargo el binary zip y lo dejo en algun lugar de mi sistema de archivos.
+
+Ahora hay que ir a las environments y agregar la ruta al bin:
+MAVEN_HOME: C:\maven
+En el path también hay que agregar %MAVEN_HOME%\bin.(infiere lo anterior)
+Fijate que el lo que ha hecho es darle un nombre cualquiera,en este caso MAVEN_HOME a un folder,pero despues lo infiere con %nombre%/bin y apunta al bin.Hizo dos pasos.
+
+También habrá que descargar el JDK,ya lo tengo.
+Bueno,por fin puedo abrir el proyecto,que será el descomprimido del Spring Initialzr.Puedo usar VSCode o IntelliJ.
+
+								POM.XML
+
+Puedo ver en el pom.xml las dependencias(éste era el archivo externo con las dependencias).
+Todo lo que se encuentre entre <dependencies> se requerirá al compilar:
+	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-web</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-tomcat</artifactId>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-test</artifactId>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+Este archivo también trae algunas configuraciones como el tipo de packaging que va a hacer(war elegimos) o la version Java:
+
+	<packaging>war</packaging>
+	<name>curso</name>
+	<description>CursoSpring por Lucas Moy</description>
+	<properties>
+		<java.version>11</java.version>
+
+					ESTRUCTURA DE UN PROYECTO SPRING
+
+Aparte de este archivo tan importante tendré todo el código dentro de la carpeta 'src'.Dentro de ella hay dos subcarpetas: main y test.
+
+La segunda es para el testing,la primera es donde trabajaré mayormente.
+Si expando main veré otros dos subfolders, 'java' y 'resources'.
+
+Dentro de resources pueden ir archivos de configuración(como la configuración a base de datos en el application.properties) o también pueden ir archivos html(pues dentro de resources están otros dos subfolders 'static' y 'templates'.
+
+Esta carpeta 'static' es la contrapartida a public en Node.Aqui pondré todos los archivos públicos que puede acceder el usuario(imágenes,videos o el index.html resultante de un build de Angular o React,por ejemplo).
+
+						JAVA ANNOTATIONS
+
+Todas las anotaciones empiezan con el simbolo '@' y básicamente añaden alguna funcionalidad a lo que tienen debajo(puede ser un método,una variable,una clase,una interfaz,...)
+Con todo esto creo un index.html en la carpeta static y levanto el server a la misma altura del pom.xml con mvn spring-boot:run
+Para asignar el JDK en IntelliJ es en File/ProjectStructure
+NOTA:parece buena idea seguir con IntelliJ.minuto 30
