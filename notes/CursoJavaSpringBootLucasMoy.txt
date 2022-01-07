@@ -73,4 +73,269 @@ Esta carpeta 'static' es la contrapartida a public en Node.Aqui pondré todos lo
 Todas las anotaciones empiezan con el simbolo '@' y básicamente añaden alguna funcionalidad a lo que tienen debajo(puede ser un método,una variable,una clase,una interfaz,...)
 Con todo esto creo un index.html en la carpeta static y levanto el server a la misma altura del pom.xml con mvn spring-boot:run
 Para asignar el JDK en IntelliJ es en File/ProjectStructure
-NOTA:parece buena idea seguir con IntelliJ.minuto 30
+
+				CONTROLLERS-SERVICES-REPOSITORIES
+
+Los controladores sirven para manejar lógica en una ruta.Dado que SpringBoot se maneja mucho con anotaciones basta con anotar una clase con @RestController para inferirla funcionalidad extra.
+
+Bien,vamos a descargar algun template.Por ejemplo el SB Admin 2 de boostrap.lo descargo y descomprimo(es html puro).Copio todo el contenido a la carpeta static(quedando static/css static/js static/tables.html,etc...)
+
+Para copiarlo puedo usar la opción OpenIn de IntelliJ(despues hay que hacer un refresh con Reload From Disk)
+NOTA:si se queda cacheada la web tengo que usar mvn clean(maven clean)
+
+Vamos a trabajar con este template.Crearemos un sistema de autenticación,usaremos Hibernate,etc... Genial.
+
+ 					SINTAXIS JSON y XML
+
+La sintaxis xml viene de Extensible MarkUp Language.Un ejemplo sencillo:
+<?xml version="1.0" encoding="UTF-8"?> <- puede que sea necesario siempre
+<cine>
+  <pelicula categoria="accion">
+    <titulo idioma="ingles">Mad Max</titulo>
+    <director>George Miller</director>
+    <estreno>15 mayo 2015</estreno<
+    <reparto>Tom Hardy</reparto>
+    <reparto>Charlize Theron</reparto>
+    <reparto>Nicholas Hoult</reparto>
+  </pelicula>
+  <pelicula categoria="animacion">
+    <titulo idioma="ingles">Inside Out</titulo>
+    <director>Pete Docter</director>
+    <estreno>17 junio 2015</estreno<
+    <reparto>Amy Poehler</reparto>
+    <reparto>Phyllis Smith</reparto>
+    <reparto>Bill Hader</reparto>
+  </pelicula>
+</cine>
+Ejemplo sencillo de una propiedad cine que sería un arreglo de peliculas.Realmente se puede apreciar su simplicidad y parecido al HTML.Probablemente la primera tag sea necesaria.
+
+En JSON no lo pondré,ya que es obvio para mi.Actualmente se usa muchísimo más JSON,aunque XML sea mucho más claro.Esto es asi por el espacio,un JSON minimizado es mucho más ligero que su contrapartida en XML.minimizado(sobre un 30% más ligero).
+Otra ventaja es la compatibilidad de JSON con Javascript,ya que es su sintaxis oficial
+
+					ESTRUCTURA BÁSICA DE UN LINK
+
+Muchas veces se confunde Uri con Url,con recurso,etc...Tomando esta direccion:
+
+https://waytolearnx.com/author/amine-kouis.html#posts
+
+1- El metódo o protocolo es 'https'
+2- La ruta(URN=UniformResourceName) o path sería 'waytolearnx.com/author/amine-kouis.html#posts(es decir toda la uri menos el método o protocolo,incluido el recurso)
+3- La URI es todo https://waytolearnx.com/author/amine-kouis.html#posts
+4- LA URL no entra a los queryParams: https://waytolearnx.com/author/amine-kouis.html
+5- El recurso es #posts
+6- Su localización seria https://waytolearnx.com/author/amine-kouis.html(todo menos el recurso)
+Asi pues la URI es la localización+el recurso
+Y la URL es lo mismo que la localización
+
+A esta URI se le podría añadir la Authority y la Query:
+http://user:password@domain.com:80/articulos/pelota?id=123#post123
+
+La Authority sería 'user:pass@domain.com:80,que está formada por la Authentication(user:pass@) y el host(domain.com) y el port(80)
+La query sería ?id=123
+El recurso sería #post123
+El path sería /articulos/pelota(y esta formado por sección(articulo) + subsecciones(pelota,...) es decir cada nivel de ruta hija es una subsección.
+
+Los queryParams son muy importantes,ya que filtrarán la información a recibir y son muy usados.
+
+					METODOS HTTP		
+
+El único método que va por la URL es GET,los demás van ocultos por el body de la request(post,put,patch,delete).
+Antigüamente se usaba post para todo(borrar,actualizar,crear,..) pero ahora ya están bien definidos sus casos y sus verbos.
+Patch se usa para modificaciones parciales.Hay otros como connect,options,trace,head.
+
+				ARQUITECTURAS MVC Y REST
+
+MVC es un patrón de arquitectura de software que nos va a servir para organizar mucho mejor nuestro código y para comunicar la información al cliente.
+Recordemos que el modelo es el que hace las consultas a la base datos,mientras el controlador puede requerir estos datos para mandarlos a la vista.
+La comunicación es directa,el usuario tipea una URL y se le devuelve el html.
+
+REST,por el contrario no devuelve html,sino que usa JSON,además la comunicación no es directa,sino que es asíncrona(usando Asynchronous Javascript mediante cualquier APi como axios,fetch,etc..)
+Puedo ver todo esto en las DevTools en Network y eligiendo sólo XHR(despues tendré varias opciones como REsponse,Headers,Preview,Cookies)
+En REST el controlador también devuelve la vista,pero se comunicará a través de servicios con un repositorio,el cual se comunica con el modelo o con la base de datos.Es decir se desplaza desde el modelo hasta el repositorio quién es el encargado de enlazar con la base de datos,y además se añaden los servicios.Ver imagenes.
+
+Mandar json en vez de html otorga ciertas ventajas,la primera es que se va mandando asincronamente,al usar AJAX,la segunda es flexibilidad,por ejemplo,si despues quiero crear una versión para móviles de mi aplicación me vale todo el json del backend.
+Sin embargo,aún se sigue usando MVC enviando HTML,por ejemplo con el envio de emails no puedo usar javascript asíncrono.Además MVC reinó durante muchos años.
+
+Recuerda que en REST el controlador recibe todo,pero son los servicios los que tinen toda la lógica,a excepción de lógica para base de datos,que es para el repositorio.En los modelos solo hay entidades o clases enlazadas a la base de datos.
+
+Para no tener que repetir todo esto salieron los frameworks,herramientas de trabajo que usan estas arquitecturas per sé.Por lo general hay uno o dos frameworks dominantes en cada lenguaje.
+
+				CREACION DE UN SERVICIO REST EN SPRING
+
+Volviendo a nuestro proyecto es tiempo de crear una API REST.Primero crearemos el modelo,siguiendo la convención de propiedades encapsuladas accesibles sólo por sus getter&setters(recuerda que también está la convención del patrón builder(),y que está tomando fuerza)
+NOTA:para generar los getter & setter en IntelliJ click derecho y generate.
+
+Para crear un controllador basta con anotar la clase con @RestController:
+Adicionalmente debo marcar cada método suyo con @RequestMapping, donde el value será la url a crear(en este caso creo /usuario).
+Además,en Java para crear un param obligatorio es con {paramName} en vez de con :id.Ejemplo: @RequestMapping(value="usuario/{id}".
+
+@RestController
+public class UsuarioController {
+
+    @RequestMapping(value="usuario/{id}",method = RequestMethod.GET)
+    public Usuario getUsuario(@PathVariable String id){
+        Usuario usuario = new Usuario();
+        usuario.setNombre("Lucas");
+        usuario.setApellido("Moy");
+        usuario.setEmail("lucasmoy@gmail.com");
+        usuario.setTelefono("12231221");
+        return usuario;
+    }
+
+Lógicamente este usuario vendría de una base de datos,pero si voy a /usuario veré un json con este usuario.Además la idea siempre es hacer un CRUD de cada entidad.Y fijate que el id en el modelo es un Long pero lo rescato como un String.
+
+					LLAMADAS AJAX A MI API
+
+Fijate que estamos devolviendo un usuario en /usuarios,en realidad no importa.Yo puedo apuntar a mi backend (a localhost:8080/usuarios) desde cualquier archivo js.Dado que en la template tenemos ya un table.html vamos a poblarlo con nuestro backend.
+
+Fijate que nuestro tables.html lo llama usuarios.js,e inicia la tabla con JQuery:
+
+$(document).ready(function() {
+  cargarUsuarios();
+  $('#usuarios').DataTable();
+});
+console.log('en el file')
+async function cargarUsuarios() {
+
+  const response = await fetch('usuario/2343',{
+    method: 'GET',
+    headers: {
+    'Accept':'application/json',
+    'Content-Type':'application/json'
+    }});
+
+    const usuarios = await response.json();
+    console.log(usuarios);
+}
+
+NOTA:en la tabla pude ver que le dieron un atributo id con el valor de dataTable.Normalmente le darán un id para iniciarla luego con JQuery:
+$(document).ready(function() {
+  cargarUsuarios();
+  $('#dataTable').DataTable();
+});
+IMPORTANTE: y fijate que no tengo porque usar JQuery con $Ajax ni nada.Dado que estoy en un simple js uso fetch y a correr:
+
+async function cargarUsuarios() {
+  const response = await fetch('usuario/2343',{
+    method: 'GET',
+    headers: {
+    'Accept':'application/json',
+    'Content-Type':'application/json'
+    const usuarios = await response.json();
+    console.log(usuarios);
+}
+Acuerdate del async,fijate que rápido enlazamos con el backend.Realmente me queda mucho por aprender.
+
+NOTA:para parsear de Integer a LOng hay varias formas en Java,una es usar Long.valueOf() y la otra es poner una L al final del integer:
+  usuario.setId(Long.valueOf(1));
+  usuario.setId(1L); <- la L es mucho más cómoda
+
+Fijate que interesante como apunta al tbody a través del id del form.Investigar outerHTML contra innerHTML:
+document.querySelector('#usuarios tbody).outerHTML='paco';
+
+    let htmlFinal ="";
+
+    usuarios.forEach( (usuario) => {
+     let fila = `<tr><td>${usuario.id}</td><td>${usuario.nombre}</td><td>${usuario.email}</td><td>`+ usuario.telefono+`</td><td><a href="#" class="btn btn-danger btn-circle btn-sm"><i class="fas fa-trash"></i></a></td></tr>`;
+     htmlFinal += fila;
+    })
+
+    const tableBody = document.querySelector('#usuarios tbody').outerHTML=htmlFinal;
+
+NOTA:outerHTML devuelve el texto y las etiquetas,innerHTML solo el contenido(no creo que sea así).Bien,puedo ver que es muy sencillo enlazar con el backend.Usaremos una base de datos desde ahora.
+
+					CONECTAR BASE DE DATOS MYSQL
+
+Instalamos un XAMPP,creo una base de datos y una tabla usuarios.Columnas id tipo long pk autoincremental(bigint para mysql),nombre apellido telefono email y password,todas varchar(40 para todas y 255 para email).
+
+				PATRON DAO-HIBERNATE-ENTITYMANAGER
+
+Creo un tercer paquete llamado dao(data access object),en él van todas las clases que harán la conexión con la base de datos,cada clase es una tabla.
+
+Antes de crear esas clases se suele crear una interface dao para cada clase,asi que creo una interface para usuarios(en Java es igual que Typescript,una interface es un contrato que hay que cumplir al implementarla):
+
+public interface UsuarioDao {
+  List<Usuario> getUsuarios();
+}
+
+Ya crearemos más métodos.Creo la clase que la implemente en el mismo paquete.Ojo,que lleva anotaciones.
+Transactional le da la funcionalidad a esta clase de poder usar consultas sql transaccionales, mientras que Repository le da la funcionalidad de poder conectarse a la BD.
+
+@Repository
+@Transactional
+public class UsuarioDaoImpl implements UsuarioDao{
+
+/* la clase EntityManager necesitará del módulo SpringDataJPA.Me va a servir para hacer la conexión con la base de datos y ejecutar queries con sintaxis Hibernate */
+  @PersistenceContext
+  EntityManager  entityManager;
+  
+  @Override
+  public List<Usuario> getUsuarios() {
+    String query = "FROM Usuario";
+    List<Usuario> resultado = entityManager.createQuery(query).getResultList();
+    return resultado;
+  }
+  
+}
+
+Para que Hibernate sepa a qué tabla debe apuntar tengo que anotar esa clase Usuario con @Entity y @Table.
+@Entity
+@Table(name = "usuarios")
+public class Usuario {
+
+Bien,ya que estamos en esta clase hay algo que molesta mucho y es tener tanto código destinado a los getter y setters.Normalmente se usa el paquete lombok,hay que agregarlo como dependencia al pom.xml:
+		<dependency>
+			<groupId>org.projectlombok</groupId>
+			<artifactId>lombok</artifactId>
+			<version>1.18.20</version>
+		</dependency>
+
+Lombok permite crear getters y setters con una anotación,aparte también permite uimplementar el ToString o el Equals.Entre Spring Boot y Lombok queda la clase asi de limpia y bonita:
+
+@Entity
+@Table(name = "usuarios")
+@ToString @EqualsAndHashCode
+public class Usuario {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name="id",nullable = false)
+    @Getter @Setter
+    private Long id;
+    
+    @Getter @Setter @Column(name = "nombre")
+    private String nombre;
+    
+    @Getter @Setter @Column(name="apellido")
+    private String apellido;
+    
+    @Getter @Setter @Column(name="email")
+    private String email;
+    
+    @Getter @Setter @Column(name="telefono")
+    private String telefono;
+    
+    @Getter @Setter @Column(name="password")
+    private String password;
+
+}
+
+Como puedo ver la inyección de dependencias hoy en día es indispensable.Es parte de uno de los cinco principios conocidos como SOLID.
+Es un patrón de diseño que como todos,tiene por objetivo solucionar los problemas que tenemos al construir aplicaciones.
+La inyección de dependencias intenta mantener los archivos,clases,etc lo más desacopladas posibles.Su objetivo es pues que nuestras piezas de códigos sea independientes.
+La inyección de dependencias se basa en otro patrón que es la inversión de control.
+Imaginando una aplicación que manda mensajes,podría mandar sms,whatsapps y emails.Bien,en vez de crear tres clases MensajeEmail,MensajeSMS y MensajeWhatsapp se crea una interfaz Mensaje y de esta forma queda el código desacoplado
+
+Usando este patrón tenemos la anotación @Autowired que crea una instancia singleton de la clase que le pase(si es una interfaz bajará hasta la clase que la implemente):
+   
+  @Autowired
+    UsuarioDao usuarioDao;
+
+  @RequestMapping(value="usuarios",method = RequestMethod.GET)
+    public List<Usuario> getUsuarios(){
+      return usuarioDao.getUsuarios();        
+    }
+
+Faltaría la configuración en el application.properties hacia la base de datos.
+NOTA:todos los logs de Hikari suelen ser de Hibernate conectando a la DB.
+
+MINUTO 2h25m
