@@ -4,25 +4,55 @@ $(document).ready(function() {
   $('#usuarios').DataTable();
 });
 
+
 async function cargarUsuarios() {
 
-  const response = await fetch('usuarios',{
+  const response = await fetch('api/usuarios',{
     method: 'GET',
-    headers: {
-    'Accept':'application/json',
-    'Content-Type':'application/json'
-    }});
+    headers: getHeaders()
+   });
 
     const usuarios = await response.json();
 
     let htmlFinal ="";
 
     usuarios.forEach( (usuario) => {
-     let fila = `<tr><td>${usuario.id}</td><td>${usuario.nombre}</td><td>${usuario.email}</td><td>`+ usuario.telefono+`</td><td><a href="#" class="btn btn-danger btn-circle btn-sm"><i class="fas fa-trash"></i></a></td></tr>`;
+
+     let botonEliminar ='<a href="#" onclick="eliminarUsuario('+usuario.id+')" class="btn btn-danger btn-circle btn-sm"> <i class="fas fa-trash"></i></a>';
+
+     if(!usuario.telefono){ usuario.telefono = '-' };
+        
+     let fila = `
+      <tr>
+        <td>${usuario.id}</td>
+        <td>${usuario.nombre}</td>
+        <td>${usuario.email}</td>
+        <td>${usuario.telefono}</td>
+        <td>`+botonEliminar+`</td>
+      </tr>`;
      htmlFinal += fila;
     })
 
     const tableBody = document.querySelector('#usuarios tbody').outerHTML=htmlFinal;
-
 }
+
+function getHeaders() {
+  return {
+    'Accept':'application/json',
+    'Content-Type':'application/json',
+    'Authorization':localStorage.token
+    }
+}
+
+async function eliminarUsuario(id){
+
+    if(confirm('¿Desea eliminar este usuario')){
+        await fetch('api/usuarios/'+id,{
+          method:'DELETE',
+          headers: getHeaders()
+          });
+         document.location.reload();
+    }
+}
+
 

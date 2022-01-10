@@ -338,4 +338,277 @@ Usando este patrón tenemos la anotación @Autowired que crea una instancia sing
 Faltaría la configuración en el application.properties hacia la base de datos.
 NOTA:todos los logs de Hikari suelen ser de Hibernate conectando a la DB.
 
-MINUTO 2h25m
+NOTA:cuando yo uso el verbo DELETE no significa que tenga que borrar un usuario.Simplemente indica el controlador a usar.
+
+  @RequestMapping(value = "/api/usuario/{id}", method = RequestMethod.DELETE)
+    public void eliminarUsuario(@PathVariable Long id){
+        usuarioDao.eliminar(id);
+
+    }
+Fijate que puedo rescatar ya el param como Long.Volveré a IntelliJ(buscar con DobleShift) 
+IMPORTANTE:cada método que agrege al dao tiene que ser declarado en la interfaz y desarrollado en la clase(son dos pasos).Al desarrollar la lógica para borrar tengo varias formas de hacerlo:
+ 
+ @Override
+  public void eliminar(Long id) {
+    Usuario usuario = entityManager.find(Usuario.class,id);
+    entityManager.remove(usuario);
+  }
+Una es con entityManager.remove(Object) la cual me obliga a buscar con entityManager.find(class,filterParam).
+
+Ahora falta que el onclick del botón en la tabla llame a este controlador.Usaremos vanilla JS para ello:
+    usuarios.forEach( (usuario) => {
+     let botonEliminar =` <a href="#" onclick="eliminarUsuario(usuario.id);"
+         class="btn btn-danger btn-circle btn-sm">
+         <i class="fas fa-trash"></i></a>`;
+     
+     let fila = `
+      <tr>
+        <td>${usuario.id}</td>
+        <td>${usuario.nombre}</td>
+        <td>${usuario.email}</td>
+        <td>`+ usuario.telefono+`</td>
+        <td>`+botonEliminar+`</td>
+      </tr>`;
+     htmlFinal += fila;
+    })
+Fijate como fuera del for no tengo acceso a ese dato.Ya solo falta que la función que he inferido con JS al boton llame a mi endpoint,al controller.
+
+NOTA:con CTRL+f5 hago un refresh sin la caché.Los demás levantan desde la caché.
+REcuerda preguntar,aunque sea con un simple confirm,antes de borrar:
+
+ if(confirm('¿Desea eliminar este usuario')){
+  ... lo borro...
+
+						AGREGAR USUARIOS
+
+NOTA:fijate que tuve un error de allowPublicRetrieval
+En la template tengo el register.html,usaremos esta template.Fijate que el register.html no tiene ningun js enlazado,asi que creo uno simplemente.
+Pero antes de crear el js creemos la lógica del controlador:
+
+   @RequestMapping(value="api/usuarios",method = RequestMethod.POST)
+    public void registrarUsuario(@RequestBody Usuario usuario){
+        usuarioDao.registrar(usuario);
+    }
+Fijate en el uso de la anotación @RequestBody.Declaro el método en la interfaz y lo desarrollo en la clase DAO.
+Para guardar en la base de datos es con entityManager.merge(T entity):
+
+  @Override
+  public void registrar(Usuario usuario) {
+    entityManager.merge(usuario);
+  }
+Fijate que potente es esta forma con el DAO y el entityManager.
+Bien,falta rescatar los valores de los controles.Ni siquiera tengo que crear un form,fijate:
+async function registrarUsuario() {
+
+  let datos = {};
+  datos.nombre = document.getElementById('txtNombre').value;
+  datos.apellido = document.getElementById('txtApellido').value;
+  datos.email = document.getElementById('txtEmail').value;
+  datos.password = document.getElementById('txtPassword').value;
+  
+  let repeatPassword = document.getElementById('txtRepeatPassword').value;
+
+    if(repeatPassword !== datos.password){
+      return alert('Las contraseñas no coinciden')
+    }
+  const response = await fetch('api/usuarios',{
+    method: 'POST',
+    body:JSON.stringify(datos),
+    headers: {
+      'Accept':'application/json',
+      'Content-Type':'application/json'
+    }});
+} 
+En este punto fijate que ha habido varios errores interesantes.Primero,si quiero que un campo pueda ser nullo,por defecto lo es si lo crea Hibernate,pero desde PhpMyAdmin se crearon con nulo a NO,y daba error por el telefono:
+
+Esto se decide con la propiedad nullable del decorador @Column:
+@Column(name="id",nullable = false)
+
+Aparte dió otro error de entityManager.merge(T entity) no puede generar los ids por mi;parece que es por declararlo como Long,aunque lo mejor es definir una estrategia con la anotación @GeneratedValue:
+@GeneratedValue(strategy = GenerationType.IDENTITY)
+
+              LOGIN
+
+De nuevo elimino los botones de acceso por redes y creo su archivo js:
+<script src="js/login.js"></script>
+Rescato los valores de esos input en una función que llamo en el botón corresponidiente,etc...Fijate que hay que crear este nuevo endpoint/controlador.
+
+Recuerda que entityManager me permite usar HQL,asi que creo la lógica simplemente:
+
+Inyeccion SQL: un hacker podría inferir este string:
+"'OR 1=1 --" a una query asi "FROM Usuario WHERE email='"+usuario.getEmail()...
+y iniciar sesión.
+
+Por esta razón se usan siempre consultas preparadas,solo hay que definir una variable con :variable asi:
+ String query = "FROM Usuario WHERE email = :email AND password = :password";
+
+Y para dar el valor a esas variables se usa setParameter(String,value):
+
+  @Override
+  public boolean verificarEmailPassword(Usuario usuario) {
+    String query = "FROM Usuario WHERE email = :email AND password = :password";
+    List<Usuario> lista = entityManager.createQuery(query)
+            .setParameter("email",usuario.getEmail())
+            .setParameter("password",usuario.getPassword())
+            .getResultList();
+   return !lista.isEmpty(); <- me aprovecho que isEmpty devuelve un boolean.
+
+IMPORTANTE:fijate que el controlador devuelve un simple String:
+    /* LOGEAR USUARIO */
+    @RequestMapping(value="api/login",method = RequestMethod.POST)
+    public String login(@RequestBody Usuario usuario){
+        if (usuarioDao.verificarEmailPassword(usuario)){
+            return "OK";
+        }
+        return "FALSE";
+    }
+Asi que no puedo hacer esto al fetchear esa data:
+const resp = await response.json();
+Simplemente puedo hacer esto:
+const resp = await response.text();
+Y recibir el texto(fijate que el error era unexpected token at position 0
+Y ahora ya puedo evaluar ese String.Genial:
+   if(resp=="FALSE"){
+        alert('Credenciales erronéas');
+    }else if(resp=="OK"){ window.location.href="usuarios.html"}
+Acuerdate que puedo redireccionar a una url o a un archivo html,asinto.
+
+        ENCRIPTAR PASSWORDS Y TOKENS -AUTENTICACIÓN REAL
+
+Existen un montón de librerías para encriptar con hash de una via.El proceso es irreversible porque diferentes contraseñas podrían dar el mismo hash,con lo que no se sabría volver del hash a la password.
+Por ejemplo imagina que el hash es simplemente multiplicar la pass.Me daría el mismo hash encriptar 123456 que 654321,ambos darían 720 como hash,luego no se puede volver.
+Una buena librería para hash tratará de reducir al mínimo este hecho,haciendo cada password encryptada casi única.Encriptemos la password al crear el user:
+
+Vamos a usar la librería Argon2 que parece que es de lejos,la mejor en Java:
+
+En cuanto a como encriptar prácticamente igual que en Node:
+
+  public void registrarUsuario(@RequestBody Usuario usuario){
+      Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
+      String hash = argon2.hash(1,1024,1,usuario.getPassword());
+      usuario.setPassword(hash);
+      usuarioDao.registrar(usuario);
+
+Básicamente es usar argon2.hash(iterations,memory,paralelism,value) tras haberlo instanciado con el método estático Argon2.create().Fijate que el hash dará un string bastante largo asi que mejor darle varchar(255).
+
+En cuanto al login ahora ya cambia un poco.De nuevo hay que usar argon2 y su método verify:
+
+public boolean verificarEmailPassword(Usuario usuario) {
+    String query = "FROM Usuario WHERE email = :email";
+    List<Usuario> lista = entityManager.createQuery(query)
+            .setParameter("email",usuario.getEmail())
+            .getResultList();
+    Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
+    String passwordHashed = lista.get(0).getPassword();
+    return argon2.verify(passwordHashed,usuario.getPassword());
+
+NOTA:cuando yo sé que argon2.verify() devuelve un booleano es mejor retornarlo que crear una variable boleana para despues retornarla en la linea siguiente.
+Aparte si no existe el correo me vendría un null y tratar de hacer getPassword() sobre un null dara un error tipo NullPointerException.
+ if(lista.isEmpty()){return false;} <- simplemente que no entre a ese lista.get(0)
+
+					SESION DE USUARIO MEDIANTE TOKEN
+
+Para gestionar una sesión de Usuario hay varias formas,la más moderna es usar tokens.Un token es un hash que identifica al usuario frente a la aplicación.
+Antigüamente se guardaba la sesión en la memoria del servidor,en la forma moderna la sesión se crea y se envia directamente al usuario.
+Esta aparición surgió para que el servidor no tuviera que almacenar miles y milesde usuarios.
+Al final la sesión sería el token,interesante.Es decir que el token almacena la sesión de usuario.
+ 
+						IMPLEMENTAR JWT
+
+Para implementar jwt hay que traer su dependencia al pom.xml:
+		<dependency>
+			<groupId>io.jsonwebtoken</groupId>
+			<artifactId>jjwt</artifactId>
+			<version>0.9.1</version>
+		</dependency>
+
+Para crear el token el autor copió una clase que ya tenía,usando el decorador @Value para inferir valor a las properties de la clase desde el application.properties:
+
+@Component
+public class JWTUtil {
+  /**
+   * @Value cargará a la propiedad el valor del decorador 
+   * es por esto que habrá que crear estas properties del 
+   * decorador en el application.properties
+    */
+  @Value("${security.jwt.secret}")
+  private String key;
+
+  @Value("${security.jwt.issuer}")
+  private String issuer;
+
+  @Value("${security.jwt.ttlMillis}")
+  private long ttlMillis;
+
+En el application.properties no tiene mucho,es como el .env:
+
+# el secret es la semilla para el token
+security.jwt.secret=springhibernatemysqldocker
+
+#quien fue el servicio que inicio el token,solo vale en microservicios,aqui solo tengo una aplicación
+security.jwt.issuer=Main
+#tiempo de expiración
+security.jwt.ttlMillis=345600000
+
+Ahora los controladores de registrarse y logearse deberán devolver el token con el estado de la sesión.
+
+Dado que anotamos la clase JWTUtil con @Component la inyecto con @Autowired en singleton.
+
+@RequestMapping(value = "api/login", method = RequestMethod.POST)
+public String login(@RequestBody Usuario usuario) {
+  Usuario usuarioLogeado = usuarioDao.obtenerUsuarioPorCredenciales(usuario);
+ if (usuarioLogeado == null) {
+     return "";
+  } else {
+    return jwtUtil.create(String.valueOf(usuarioLogeado.getId()), usuarioLogeado.getEmail());
+     }
+ }
+Devolvemos un String con el token.Fijate que podríamos devolver otras cosas,como un objeto o un arreglo,pero habría que cambiar el tipo del controlador a devolver.Vayamos a rescatar ese string en el browser.
+
+Bien,este token realmente hay que mandarlo en cada request al servidor,ya que es mi sesión y me identifica como persona que está usando la aplicación,etc...
+
+async function eliminarUsuario(id){
+
+    if(confirm('¿Desea eliminar este usuario')){
+        await fetch('api/usuarios/'+id,{
+          method:'DELETE',
+          headers:{
+            'Accept':'application/json',
+            'Content-Type':'application/json',
+            'Authorization':'Bearer '+localStorage.token
+            }
+          });
+         document.location.reload();
+    }
+}
+Es tan fácil como agregar el header.Lógicamente,cada controlador tendrá que mirar si viene el token y comprobar que el id es el mío,etc:
+   
+/* GET ALL */
+@RequestMapping(value="api/usuarios",method = RequestMethod.GET)
+public List<Usuario> getUsuarios(@RequestHeader(value="Authorization") String token){
+ String usuarioId = jwtUtil.getKey(token);
+ if(usuarioId != null){
+    return usuarioDao.getUsuarios();
+ }else{
+   return List.of();
+ }
+}
+Habría que consultar a la DB,etc pero de momento no lo haremos.Fijate en el uso de @RequestHeader para acceder a un header mediante su key:
+
+@RequestHeader(value="Authorization") String token) 
+Podría acceder al Content-Type o a un custom Header,simplemente tengo que saber su nombre.
+Por último fijate como la clase que ha implementado él permite crear un token desde dos valores y recuperar cualquiera de ellos independientemente.Fijate que ha sido bastante fácil implementar el token y encriptar la pasword.
+
+Ojo que no hay que mandar Bearer:
+function getHeaders() {
+  return {
+    'Accept':'application/json',
+    'Content-Type':'application/json',
+    'Authorization':localStorage.token
+    }
+}
+
+IMPORTANTE: rescatar el token en cada petición no es algo que se haga en Spring.Está el módulo Spring Security,con él se pueden crear varios archivos de configuración para que mapee la aplicación y siempre extraiga el token,etc.
+Spring Security también tiene un mejor control de errores(ya que nosotros no tuvimos ninguno xd,es imposible que sea peor).Con Spring Security puedo mandar statuCode,etc.Es el siguiente paso que debería tomar.
+
+4h13m
