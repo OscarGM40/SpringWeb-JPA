@@ -2,7 +2,13 @@
 $(document).ready(function() {
   cargarUsuarios();
   $('#usuarios').DataTable();
+  actualizarEmailDelUsuario();
 });
+
+async function actualizarEmailDelUsuario() {
+  const span = document.querySelector('#txt-email-usuario').outerHTML = localStorage.email;
+
+}
 
 
 async function cargarUsuarios() {

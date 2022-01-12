@@ -611,4 +611,18 @@ function getHeaders() {
 IMPORTANTE: rescatar el token en cada petición no es algo que se haga en Spring.Está el módulo Spring Security,con él se pueden crear varios archivos de configuración para que mapee la aplicación y siempre extraiga el token,etc.
 Spring Security también tiene un mejor control de errores(ya que nosotros no tuvimos ninguno xd,es imposible que sea peor).Con Spring Security puedo mandar statuCode,etc.Es el siguiente paso que debería tomar.
 
-4h13m
+Fijate como siempre los beneficios de haber metido el email del usuario actual en el localStorage:
+async function actualizarEmailDelUsuario() {
+  const span = document.querySelector('#txt-email-usuario').outerHTML = localStorage.email;
+
+Recuerda que git es un repositorio distribuido en la nube.Anteriormente eran centralizados.
+
+NOTA:se puede hacer un pull request desde cualquier rama hacia cualquier rama.Unpull request es como un pedido de unificación de ramas,pero con un paso adicional de verificación(incluso se puede asignar la pull request en el botón assign,claro que tendrá que haber varios programadores en el repositorio)
+
+IMPORTANTE: antes se solía crear una rama por cada programador,hoy en día se nombran ramas de forma semántica a lo que representan.
+Así,lo primero que se hace es crear la rama dev o development,de la que se crearán más ramas,con diversas features.Cuando dichas features estén preparadas se hará un pull request contra esa development,que despues se mergeará con release(se crea la release) y de esa release se hace la PR contra master.
+
+También estan la rama hotfix,que significa un error que hay que corregir rápidamente.
+Aparte cuando se hace un release se suele anotar como una mayor release(1.0,2.0,...) mientras que un hotfix es una minor release al tagearla.Además por convención se usan tres digitos(v.0.0.1)
+Si dos ramas tienen el mismo archivo con cambios diferentes y tratan de fusionarse con otra(por ejemplo feature1 y feature2 contra develop)
+Básicamente tendré conflictos al fusionar una rama con uno o más archivos con contenido diferente.Fijate que la zona de las ramas fue muy interesante.
