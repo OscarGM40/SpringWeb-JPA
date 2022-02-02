@@ -1,0 +1,112 @@
+		SPRING BOOT AND SPRING SECURITY WITH JWT AND ACCESS AND REFRESH TOKENS
+
+Source: https://www.youtube.com/watch?v=VVn9OG9nfH0
+
+Voy a Spring Initializtr y creo un proyecto Jar con las dependencias Spring Web,Spirng Security,Msyql Driver,Spring Data JPA ,Spring DevTools y Lombok.
+
+Siempre que vaya a crear una aplicación debería pensar en el diseño de la misma,ya que hay varias formas de realizar lo mismo.
+En este caso el autor ya ha creado los dos Modelos:
+
+User {
+ id:Long
+ name: String
+ username: String
+ password: String
+ roles: Collection<Role>
+}
+
+Role{
+  id:Long
+  name:String
+}
+
+IMPORTANTE: fijate que los Roles los necesito en cuanto cargue un usuario,y que la relacción es ManyToMany,luego:
+  
+@ManyToMany(fetch = FetchType.EAGER)
+private Collection<Role> roles= new ArrayList<>();
+
+Fijate que el autor va a tomar otra aproximación diferente a usar @Getter y @Setter,y es usando @Data @NoArgsConstructor y @AllArgsConstructor(en que se diferencian unas de otras):
+
+@Entity @Data @NoArgsConstructor @AllArgsConstructor 
+
+También está siguiendo otra estrategia(AUTO en vez de IDENTITY):
+  @Id @GeneratedValue(strategy = GenerationType.AUTO)
+  private Long id;
+
+De nuevo,fijate que el autor llamó domains a models y repo a lo que el otro llamó DAO.Creo las interfaces y un método abstracto:
+
+public interface RoleRepo extends JpaRepository<Role, Long> {
+  Role findByName(String name);
+}
+NOTA:fijate que en una aplicación real nunca querré devolver todos los usuarios.Imaginate que son 50 millones.Además,el usuario ni siquiera podrá ver mas de 10 o  20 por pantalla a la vez.No tiene sentido devolver todos.
+
+Este autor va a usar Repository y en Service crea la interfaz y la implementación de la interfaz.Lucas creo sólo esto último,en vez de en el paquete Service en el Dao.
+Y anotó la clase con @Repository.
+@Repository
+@Transactional //permite ejecutar transacciones
+// @SuppressWarnings("unchecked")
+public class UsuarioDaoImpl implements UsuarioDao {
+
+
+Fijate que este autor va a realizar lo mismo,en otra carpeta y ademas creó el repository también.Perfecto.
+Pero no sólo eso,sino que voy a inyectar los constructores a las propiedades de esta clase.Fijate que los guardé anteriormante con @AllArgsConstructor:
+
+@Service @RequiredArgsConstructor <- requiero el constructor con todos los args
+@Transactional @Slf4j <- permito transacciones y quiero ver los logs
+public class UserServiceImpl implements UserService{
+  private final UserRepo userRepo;
+  private final RoleRepo roleRepo;
+
+NOTA: gracias a la anotación @Transactional realizar esto va a guardar el role:
+ @Override
+  public void addRoleToUser(String username, String roleName) {
+    User user = userRepo.findByUsername(username);
+    Role role = roleRepo.findByName(roleName);
+    user.getRoles().add(role); <- con @Transactional lo guardará
+  }
+
+La verdad es que es una mejor aproximación la suya,ya que tiene todo lo que hace Lucas + acceso a JPARepository:
+
+ @Override
+  public User getUser(String username) {
+    return userRepo.findByUsername(username);
+  }
+
+  @Override
+  public List<User> getUsers() {
+    return userRepo.findAll();
+  }
+
+NOTA:obviamente en una aplicación real tendré que usar try/catch y gestionar los errores.
+Y supongo que gracias a la dependencia de logs de lombok puedo crear algunos logs:
+  
+@Override
+  public User saveUser(User user) {
+    log.info("Saving new user: " + user.getUsername());
+    return userRepo.save(user);
+  }
+
+  @Override
+  public Role saveRole(Role role) {
+    log.info("Saving new role {}", role.getName());
+    return roleRepo.save(role);
+  }
+
+NOTA: recuerda que puedo usar la anotación @RequestMapping("/api") para que toda la clase anotada use domain/api en vez de simplemente domain:
+
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api") <- todo estará en localhost:8080/users
+public class UserController {
+
+Fijate que ResponseEntity es muy poderoso:
+ 
+ @GetMapping("/users")
+ public ResponseEntity<List<User>> getUsers() {
+    return ResponseEntity
+      .ok()
+      .body(userServiceImpl.getUsers());
+  }
+
+Creo el application.properties y arranco la app.Dado que tenemos Spring Security activo hago el login con 'user' + la pass de la consola.Fijate que está todo correcto.Practicar containerizando una app de Spring.
+Minuto 34
