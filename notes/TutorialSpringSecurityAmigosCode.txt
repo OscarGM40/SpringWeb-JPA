@@ -5,6 +5,7 @@ Source: https://www.youtube.com/watch?v=VVn9OG9nfH0
 Voy a Spring Initializtr y creo un proyecto Jar con las dependencias Spring Web,Spirng Security,Msyql Driver,Spring Data JPA ,Spring DevTools y Lombok.
 
 Siempre que vaya a crear una aplicación debería pensar en el diseño de la misma,ya que hay varias formas de realizar lo mismo.
+
 En este caso el autor ya ha creado los dos Modelos:
 
 User {
@@ -20,14 +21,15 @@ Role{
   name:String
 }
 
-IMPORTANTE: fijate que los Roles los necesito en cuanto cargue un usuario,y que la relacción es ManyToMany,luego:
+IMPORTANTE: fijate que los Roles los necesito en cuanto carge un usuario,y que la relacción es ManyToMany,siempre debo especificar el tipo de relacion en Spring,y como cargar los datos,en este caso queremos popular todo:
   
 @ManyToMany(fetch = FetchType.EAGER)
 private Collection<Role> roles= new ArrayList<>();
 
-Fijate que el autor va a tomar otra aproximación diferente a usar @Getter y @Setter,y es usando @Data @NoArgsConstructor y @AllArgsConstructor(en que se diferencian unas de otras):
+Fijate que el autor va a tomar otra aproximación diferente a usar @Getter y @Setter en cada propiedad con lombok también,y es usando @Data @NoArgsConstructor y @AllArgsConstructor(en que se diferencian unas de otras):
 
 @Entity @Data @NoArgsConstructor @AllArgsConstructor 
+public class User {...}
 
 También está siguiendo otra estrategia(AUTO en vez de IDENTITY):
   @Id @GeneratedValue(strategy = GenerationType.AUTO)
@@ -48,8 +50,9 @@ Y anotó la clase con @Repository.
 public class UsuarioDaoImpl implements UsuarioDao {
 
 
-Fijate que este autor va a realizar lo mismo,en otra carpeta y ademas creó el repository también.Perfecto.
-Pero no sólo eso,sino que voy a inyectar los constructores a las propiedades de esta clase.Fijate que los guardé anteriormante con @AllArgsConstructor:
+Fijate que este autor va a realizar lo mismo,en otra carpeta y ademas creó el repository también.Perfecto.Es una mejor aproximación.
+
+Pero no sólo eso,sino que voy a inyectar el contructor con todas las propiedades con @RequiredArgsConstructor.Fijate que lo guardé anteriormante con @AllArgsConstructor:
 
 @Service @RequiredArgsConstructor <- requiero el constructor con todos los args
 @Transactional @Slf4j <- permito transacciones y quiero ver los logs
@@ -57,7 +60,8 @@ public class UserServiceImpl implements UserService{
   private final UserRepo userRepo;
   private final RoleRepo roleRepo;
 
-NOTA: gracias a la anotación @Transactional realizar esto va a guardar el role:
+NOTA: gracias a la anotación @Transactional realizar esto va a guardar el user con el role,es decir,que cuando sea necesario llegar a la tabla relacionada lo va a hacer automáticamente:
+
  @Override
   public void addRoleToUser(String username, String roleName) {
     User user = userRepo.findByUsername(username);
@@ -78,7 +82,7 @@ La verdad es que es una mejor aproximación la suya,ya que tiene todo lo que hac
   }
 
 NOTA:obviamente en una aplicación real tendré que usar try/catch y gestionar los errores.
-Y supongo que gracias a la dependencia de logs de lombok puedo crear algunos logs:
+Y gracias a la dependencia de logs de lombok (@Slf4j)  puedo crear algunos logs rápidamente:
   
 @Override
   public User saveUser(User user) {
@@ -92,7 +96,7 @@ Y supongo que gracias a la dependencia de logs de lombok puedo crear algunos log
     return roleRepo.save(role);
   }
 
-NOTA: recuerda que puedo usar la anotación @RequestMapping("/api") para que toda la clase anotada use domain/api en vez de simplemente domain:
+NOTA: recuerda que puedo usar la anotación @RequestMapping("/api") para que toda la clase anotada deba usar  domain/api en vez de simplemente domain:
 
 @RestController
 @RequiredArgsConstructor
@@ -108,5 +112,208 @@ Fijate que ResponseEntity es muy poderoso:
       .body(userServiceImpl.getUsers());
   }
 
+
 Creo el application.properties y arranco la app.Dado que tenemos Spring Security activo hago el login con 'user' + la pass de la consola.Fijate que está todo correcto.Practicar containerizando una app de Spring.
-Minuto 34
+
+En cuanto a guardar un User o un Role simplemente hay que usar @RequestBody:
+  @PostMapping("/user/save")
+  public ResponseEntity<User> saveUser(@RequestBody User user) {
+    return ResponseEntity
+      .status(HttpStatus.CREATED)
+      .body(userServiceImpl.saveUser(user));
+  }
+    @PostMapping("/role/save")
+    public ResponseEntity<Role> saveRole(@RequestBody Role role) {
+      return ResponseEntity
+        .status(HttpStatus.CREATED)
+        .body(userServiceImpl.saveRole(role));
+    }
+
+NOTA: en vez de mandar ok() puedo mandar created(null) (y status(HttpStatus.CREATED??).el autor incluso suele mandar la url del controlador de esta forma:
+
+* uri:URI devuelve la Url del controlador en un String
+ URI uri = URI.create(ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/user/save").toUriString());
+
+    return ResponseEntity
+      // .status(HttpStatus.CREATED)
+      .created(uri)
+      .body(userServiceImpl.saveUser(user));
+
+NOTA: al realizarlo asi la uri se manda en un header.Hará lo mismo para el saveRole:
+
+   @PostMapping("/role/save")
+    public ResponseEntity<Role> saveRole(@RequestBody Role role) {
+       URI uri = URI.create(ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/role/save").toUriString());
+      return ResponseEntity
+        .created(uri)
+        .body(userServiceImpl.saveRole(role));
+    }
+
+IMPORTANTE: fijate como crea una clase interna on the fly para no pasar dos argumentos.Me gusta mucho:
+
+   @Data
+    class RoleToUserForm {
+      private String username;
+      private String roleName;
+    }
+
+NOTA: @Data de lombok parece que genera los Getter y Setter(luego es mucho mejor que ir de propiedad en propiedad).
+
+IMPORTANTE: cuando no vaya a devolver nada puedo usar ResponseEntity<?>.Esto implica no poder llamar a body() y en su lugar tener que llamar a build():
+
+    @PostMapping("/role/addtouser")
+    public ResponseEntity<?> saveRoleToUser(@RequestBody RoleToUserForm form) {
+       userServiceImpl.addRoleToUser(form.getUsername(), form.getRoleName()) ;
+
+      return ResponseEntity
+        .ok()
+        .build(); // si va vacia hay que llamar a build para que construya la response(con body se construye sola)
+    }
+Desde luego es bastante fácil todo hasta ahora.Hagamos un par de pruebas ya.
+
+			42m	CREATING DATA AND TESTING EVERYTHING UNTIL NOW		
+
+Para probar la api puedo hacer dos cosas,levantarla y con Postman u otra herramienta introducir datos haciendo hit a los endpoints o creando fake data ya desde la app.Usaremos esta segunda opción.
+
+Para esto usaremos la clase CommandLineRunner infiriendola con @Bean del contenedor de beans de Spring.Esta clase permite ejecutar comandos una vez se inicie la app:
+
+En el archivo main de una app de SpringBoot:
+@SpringBootApplication 
+public class UserserviceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(UserserviceApplication.class, args);
+	}
+	@Bean
+	CommandLineRunner run(UserService userService) {
+		return args -> {
+        /* todo lo que ponga aqui se ejecutará tras arrancar la app */
+		};
+	}
+}
+
+Sabiendo esto,creo algunos roles:
+@Bean
+CommandLineRunner run(UserService userService){
+  return args -> {
+    userService.saveRole(new Role(null,"ROLE_USER"));
+	userService.saveRole(new Role(null,"ROLE_MANAGER"));
+	userService.saveRole(new Role(null,"ROLE_ADMIN"));
+	userService.saveRole(new Role(null,"ROLE_SUOER_ADMIN"));
+}
+Perfecto.Continuo creadno algunos users y luego les asigno un rol:
+			/* ahora creo algunos users fake */
+			userService.saveUser(new User(null,"John Travolta","jonny","123456",new ArrayList<Role>()));
+			userService.saveUser(new User(null,"Will Smith","will","123456",new ArrayList<Role>()));
+			userService.saveUser(new User(null,"Sylvester Stallone","sylver","123456",new ArrayList<Role>()));
+
+			/* ahora le asigno roles a los users */
+			userService.addRoleToUser("jonny","ROLE_USER");
+			userService.addRoleToUser("will","ROLE_USER");
+			userService.addRoleToUser("sylver","ROLE_USER");
+			userService.addRoleToUser("jonny","ROLE_MANAGER");
+			userService.addRoleToUser("sylver","ROLE_MANAGER");
+			userService.addRoleToUser("jonny","ROLE_ADMIN");
+
+							SPRING SECURITY M47
+
+Si bien al tener activa Spring Security puedo acceder con 'user' y esa random pass,es momento de desactivar este usuario por default,ya que quiero usar mi user-pool(autenticación).
+También quiero gestionar el acceso a recursos en base al rol de ese usuario(autorización).Es importante distinguir entre autenticación(quién puede entrar) y autorización(a qué recursos está autorizado a acceder un usuario)
+
+Todo esto lo gestiona el módulo Spring Security,y para ello tendré que configurarlo en base a mis necesidades.Creo pues un folder llamado Security y la clase SecurityConfig,la cual llevará algunas annotations:
+
+IMPORTANTE: la clase de configuracion la debo anotar con @Configuration(cualquier clase anotada asi Spring la va a tomar como una configuracion.También va a extender de la clase core para configurar la Security de una Web,que es la clase WebSecurityConfigurerAdapter
+
+@Configuration @RequiredArgsConstructor @EnableWebSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter{
+    @Override
+  protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    // TODO Auto-generated method stub
+    super.configure(auth);
+  }
+
+  @Override
+  protected void configure(HttpSecurity http) throws Exception {
+    // TODO Auto-generated method stub
+    super.configure(http);
+  }
+
+}
+
+Esta clase custom tendrá que sobrescribir el método configure por doble partida,de esta forma sobrescribo la Seguridad por defecto con la mia.Realmente es sencillo todo hasta ahora.
+
+IMPORTANTE: hay varias formas de buscar por la users-pool:
+1-  auth.inMemoryAuthentication() <- puedo pasarle usuarios en memoria
+2-   auth.jdbcAuthentication()   <- puedo pasarle una query SQL en ese momento
+Sin embargo al estar usando Spring JPA usaremos userDetailsService.
+
+Esta clase UserDetailsService siempre pide un userDetailsService,que es un bean que tengo que pedir y sobrescribir para decirle a Spring como luce un User.Fijate que importante es esto y el sentido que tiene.
+
+  /* beans core que tengo que proporcionar a Spring */
+  private final UserDetailsService userDetailsService;
+  private final BCryptPasswordEncoder bCryptPasswordEncoder;
+
+ /* autenticacion */  
+  @Override
+  protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    auth.userDetailsService(userDetailsService).passwordEncoder(bCryptPasswordEncoder); 
+
+Y fijate de nuevo que obviamente hay que pasarle un encriptador para la password.La clase BCryptPasswordEncoder me valdrá.Ahora bien hemos dicho que estas dos clases necesitan un Bean,asi que tengo que proporcionarlo(por defecto no los tiene Spring).
+
+
+El segundo es bastante sencillo.Fijate que para proporcionar un Bean a Spring voy al archivo principal,anoto un método con @Bean y le hago retornar una instancia de esa clase que quiero almacenar:
+
+@SpringBootApplication
+public class UserserviceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(UserserviceApplication.class, args);
+	}
+	
+	@Bean
+	PasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+	
+	@Bean
+	CommandLineRunner run(UserService userService) {
+
+El primero es más complejo,lo que vamos a hacer es que la clase con el Service herede tanto de la interfaz anterior como de esta nueva interfaz UserDetailsService:
+@Service @RequiredArgsConstructor
+@Transactional @Slf4j
+public class UserServiceImpl implements UserService,UserDetailsService{
+
+Al ser una interfaz pedirá sobreescribir sus métodos(en este caso es sólo el método UserDetails loadUserByUsername(String name),aunque es bastante extenso:
+
+  @Override
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    User user = userRepo.findByUsername(username);
+    if(user == null){
+      log.error("User "+user+" not found inthe database");
+      throw new UsernameNotFoundException("User "+user+" not found inthe database");
+    }else{
+      log.info("User found in the database: {}", user);
+    }
+    /* tengo que devolver un UserDetails fijate */
+    /* para diferenciarlo de un User escribo el full qualifier name (new org.springframework.security.core.userdetails.User )*/
+    return new org.springframework.security.core.userdetails.User(user.getUsername(), user.getPassword(), authorities);
+  }
+
+Al final queda asi:
+ /* Tengo que recorrer cada usuario añadiendole los roles que tenga */
+ Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();
+   
+  user.getRoles().forEach(role -> {
+    authorities.add(new SimpleGrantedAuthority(role.getName()));
+  });
+  /* fijate que el UserDetails necesitará los authorities */
+   return new org.springframework.security.core.userdetails.User(user.getUsername(), user.getPassword(), authorities);
+
+IMPORTANTE:fijate que la clase UserDetails luce asi:
+public User(String username, String password, Collection<? extends GrantedAuthority> authorities) ,con lo que siempre que lo sobreescriba tengo que pasarle un username,una password y una Collection<GrantedAuthority>.Y como SimpleGrantedAuthority hereda de GrantedAuthority nos vale lo anterior.Realmente son un par de cosas,pero no es muy complejo.
+
+NOTA:realizar esto crea el Bean de tipo UserDetailsService,con lo que ya tenemos la autorization completa hasta el punto que la dejamos.
+
+
+				M59 JWT - CONTINUING WITH SECURITY
+
