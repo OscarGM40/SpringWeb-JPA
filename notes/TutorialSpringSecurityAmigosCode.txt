@@ -428,4 +428,143 @@ Y creo otro con más tiempo(30m para este).No necesita las reglas:
             /* claims son una serie de reglas */
             .sign(algorithm);
 
-Ahora ya tendré los tokens,asi que puedo enviarlos.Minuto 1h21m
+Ahora ya tendré los tokens,asi que puedo enviarlos.
+  /* mando el jwt al response */
+  response.setHeader("acces_token", access_token);
+  response.setHeader("refresh_token", refresh_token);
+
+Por último codificamos la password al guardar,que áun no lo habiamos hecho:
+  @Override
+  public User saveUser(User user) {
+    log.info("Saving new user: " + user.getUsername());
+    user.setPassword(passwordEncoder.encode(user.getPassword()));
+
+Es hora de hacer una prueba.Por defecto puedo hacer una petición al /login y alli tengo un form para entrar.Dado que hemos creado unos usuarios con CommandLineRunner puedo usar uno de los tres y se me debería devolver en los headers los tokens(y asi sucede)
+
+NOTA:al haber usado request.setParameter tengo que mandar el body como x-www-form-urlencoded y agregar como key-values lo necesario(un username y password de la user-pool que he creado por consola en este caso).
+
+Puedo ir a jwt.io y ver el payload del token,confirmando que se crea con lo que quiero crearlo.Y asi es,lo creó con el username y los roles,y el issuer y el exp:
+{
+  "sub": "jonny",
+  "roles": [
+    "ROLE_ADMIN",
+    "ROLE_MANAGER",
+    "ROLE_USER"
+  ],
+  "iss": "http://localhost:8080/login",
+  "exp": 1644678055
+}
+Genial.Pero en vez de mandarlos por los headers vamos a mandar algo por el body.Para ello hay que crear un HashMap con los pares de clave valor que quiero devolver y parsearlo con la clase ObjectMapper().writeValue(response.getOutputStream(),value):
+
+ /* mando una reponse por el body */
+ Map<String, String> tokensInBody = new HashMap<>();
+ tokensInBody.put("access_token", access_token);
+ tokensInBody.put("refresh_token", refresh_token);
+ /* tengo que especificar el tipo de contenido */
+ response.setContentType("application/json");
+ new ObjectMapper().writeValue(response.getOutputStream(), tokensInBody);
+
+Bien,es hora de cambiar el acceso a nuestra app,queremos que todos puedan acceder al login por POSt ,y el resto sólo si tienen token
+
+IMPORANTE:puedo ver que Spring Security me proporciona ese /login viendo la clase UsernamePasswordAuthenticationFilter que debo heredar para hacer una Custom Auth:
+
+public class UsernamePasswordAuthenticationFilter extends AbstractAuthenticationProcessingFilter {
+  public static final String SPRING_SECURITY_FORM_USERNAME_KEY = "username";
+  public static final String SPRING_SECURITY_FORM_PASSWORD_KEY = "password";
+  private static final AntPathRequestMatcher DEFAULT_ANT_PATH_REQUEST_MATCHER = new AntPathRequestMatcher("/login", "POST"); <- aqui lo crean ellos.
+
+Si quiero puedo cambiar la ruta a /api/login,por ejemplo.Para ello en el configure de la autorización creo una instancia de mi clase para el Filter.Fijate que esto implica que tenga que pasar esta instancia y no una clase anónima al addFilter como estoy haciendo:
+
+ /* autorizacion */
+  @Override
+  protected void configure(HttpSecurity http) throws Exception {
+   CustomAuthenticationFilter customAuthenticationFilter = new CustomAuthenticationFilter(authenticationManagerBean());
+   customAuthenticationFilter.setFilterProcessesUrl("/api/login");
+    http.addFilter(customAuthenticationFilter); <- debe ser la misma instancia
+
+
+Al final hemos dejado los permisos asi:
+ /* todos pueden acceder al login,solo los ROLE_USER pueden ver /api/user y solo los ADMIN pueden crear por POST.Además,cada request debe estar autenticado */
+
+  http.authorizeRequests().antMatchers(HttpMethod.POST, "/login").permitAll();
+  http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/user/**").hasAnyAuthority("ROLE_USER");
+  http.authorizeRequests().antMatchers(HttpMethod.POST,"/api/user/save/**").hasAnyAuthority("ROLE_ADMIN");
+  http.authorizeRequests().anyRequest().authenticated();
+
+			1h33m PARTE DOS RECEPCIÓN DEL TOKEN POR EL SERVER
+
+Bien,ya soy capaz de mandar el token con el payload al cliente.Ahora me toca ser capaz de recibirlo y comprobar su validez
+La forma de realizar esto es creando un AuthorizationFilter,el cual actuará como middleware,interceptando cada petición y procesandola,determinando si el usuario tiene acceso a ese recurso o no.
+
+Dado que es otro filtro voy a usar el mismo package 'filters'.Si la clase anterior se llamó CustomAuthenticationFilter esta se llamará CustomAuthorizationFilter,pues ahora miramos por la autorización y no por la autenticación.
+
+Todo irá en ese método doFilterInternal,que se ejecuta una vez por request,obviamente:
+
+public class CustomAuthorizationFilter extends OncePerRequestFilter {
+  @Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+    
+  }
+  
+}
+Al final el filtro quedó así:
+@Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+
+    /* si estamos en el login no quiero que procese nada el middleware */
+    if (request.getServletPath().equals("/api/login")) {
+      filterChain.doFilter(request, response);
+      return;
+    } else {
+      String authorizationHeader = request.getHeader("Authorization");
+      /* compruebo que no sea null y que empiece por Bearer */
+      if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+        try {
+          String token = authorizationHeader.substring("Bearer ".length()); // podia poner 7 también
+          /* la semilla obviamente debe ser la misma al decodificar */
+          Algorithm algorithm = Algorithm.HMAC512("secret".getBytes());
+          /* decodifico el token */
+          JWTVerifier verifier = JWT.require(algorithm).build();
+          /* verifico el token */
+          DecodedJWT decodedJWT = verifier.verify(token);
+          /* obtengo el username del token */
+          String username = decodedJWT.getSubject();
+          /* obtengo los roles del token */
+          String[] roles = decodedJWT.getClaim("roles").asArray(String.class);
+          Collection<SimpleGrantedAuthority> authorities = Arrays.stream(roles).map(SimpleGrantedAuthority::new)
+              .collect(Collectors.toList());
+          authorities.stream().forEach(e -> log.info("Authority is: {}", e.getAuthority()));
+          /* creo un objeto Authentication con el username y password */
+          UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username,
+              null, authorities);
+          /* importante,hay que pasarlo a Spring Security */
+          SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+          filterChain.doFilter(request, response); // similar a next()
+        } catch (Exception e) {
+          log.error("Error logging in: {}", e.getMessage());
+          response.setHeader("error", e.getMessage());
+          /* mando una reponse por el body */
+          Map<String, String> errorInBody = new HashMap<>();
+          errorInBody.put("ok", "false");
+          errorInBody.put("error", e.getMessage());
+          /* tengo que especificar el tipo de contenido */
+          response.setContentType("application/json");
+          new ObjectMapper().writeValue(response.getOutputStream(), errorInBody);
+        }
+      } else {
+        filterChain.doFilter(request, response); // similar a next()
+      }
+    }
+  }
+
+Añado el filtro,pero fijate que usaré addFilterBefore para que sea un filtro antes de cada petición(obviamente tendré addFilterAfter):
+
+  /* aqui le pasaré mis filtros que debo crear */
+    http.addFilter(customAuthenticationFilter);
+    http.addFilterBefore(new CustomAuthorizationFilter(), UsernamePasswordAuthenticationFilter.class);
+    
+Bien,es hora de probar.Puedo tratar de acceder a /api/users sin autenticarme y no debería de poder.Despues debo crear el Header Authorization y usar "Bearer {JWT}".Puedo probar con tokens incorrectos y tampoco debo poder acceder.
+Por último pruebo con un token correcto.Todo OK.jose luiz
+1h49m

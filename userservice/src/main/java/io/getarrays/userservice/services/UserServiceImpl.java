@@ -8,6 +8,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,7 +25,8 @@ public class UserServiceImpl implements UserService,UserDetailsService{
 
   private final UserRepo userRepo;
   private final RoleRepo roleRepo;
-  
+  private final BCryptPasswordEncoder passwordEncoder;
+   
   @Override
   public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
     User user = userRepo.findByUsername(username);
@@ -51,6 +53,7 @@ public class UserServiceImpl implements UserService,UserDetailsService{
   @Override
   public User saveUser(User user) {
     log.info("Saving new user: " + user.getUsername());
+    user.setPassword(passwordEncoder.encode(user.getPassword()));
     return userRepo.save(user);
   }
 

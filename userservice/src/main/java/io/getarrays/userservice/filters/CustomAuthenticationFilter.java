@@ -2,6 +2,8 @@ package io.getarrays.userservice.filters;
 
 import java.io.IOException;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import javax.servlet.FilterChain;
@@ -11,6 +13,7 @@ import javax.servlet.http.HttpServletResponse;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -76,8 +79,22 @@ public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFi
             .withExpiresAt(new Date(System.currentTimeMillis() + 30*60*1000)) // 10 minutos
             /* issuer es el emisor de este token,le pasaremos el dominio donde viene la request */
             .withIssuer(request.getRequestURL().toString())
-            /* claims son una serie de reglas */
+            /* claims son una serie de reglas,el refresh no va a llevar */
             .sign(algorithm);
+
+        /* mando el jwt al response */
+        response.setHeader("acces_token", access_token);
+        response.setHeader("refresh_token", refresh_token);
+        
+        /* mando una reponse por el body */
+        Map<String, String> tokensInBody = new HashMap<>();
+        tokensInBody.put("ok", "true");
+        tokensInBody.put("access_token", access_token);
+        tokensInBody.put("refresh_token", refresh_token);
+        /* tengo que especificar el tipo de contenido */
+        response.setContentType("application/json");
+        new ObjectMapper().writeValue(response.getOutputStream(), tokensInBody);
+        
         
   }
   
