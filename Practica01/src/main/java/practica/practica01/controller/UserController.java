@@ -1,4 +1,4 @@
-package io.getarrays.userservice.controllers;
+package practica.practica01.controller;
 
 import java.io.IOException;
 import java.net.URI;
@@ -26,12 +26,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
-import io.getarrays.userservice.models.Role;
-import io.getarrays.userservice.models.User;
-import io.getarrays.userservice.services.UserServiceImpl;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import practica.practica01.models.Role;
+import practica.practica01.models.User;
+import practica.practica01.services.UserServiceImpl;
 
 @RestController
 @RequiredArgsConstructor
@@ -41,7 +41,7 @@ public class UserController {
 
   @Autowired
   private final UserServiceImpl userServiceImpl;
-
+  
   @GetMapping("/users")
   public ResponseEntity<List<User>> getUsers() {
     return ResponseEntity
@@ -51,14 +51,9 @@ public class UserController {
 
   @PostMapping("/user/save")
   public ResponseEntity<User> saveUser(@RequestBody User user) {
-    /*
-     * el autor prefiere crear el URI,con la ruta del controlador actual,pero no es
-     * necesario
-     */
     URI uri = URI.create(ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/user/save").toUriString());
 
     return ResponseEntity
-        // .status(HttpStatus.CREATED) <- al usar created() ya no uso status()
         .created(uri)
         .body(userServiceImpl.saveUser(user));
   }
@@ -67,7 +62,6 @@ public class UserController {
   public ResponseEntity<Role> saveRole(@RequestBody Role role) {
     URI uri = URI.create(ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/role/save").toUriString());
     return ResponseEntity
-        // .status(HttpStatus.CREATED)
         .created(uri)
         .body(userServiceImpl.saveRole(role));
   }
@@ -79,9 +73,7 @@ public class UserController {
 
     return ResponseEntity
         .ok()
-        .build(); // si la response va vacia(como es este caso) hay que llamar a build() para que
-                  // construya la response(fijate que llamando a body() como arriba se construye
-                  // sola)
+        .build(); 
   }
 
   @GetMapping("/token/refresh")
@@ -106,7 +98,7 @@ public class UserController {
 
         /* obviamente habria que crear una utility class */
         String access_token = JWT.create()
-            .withSubject(user.getUsername())
+            .withSubject(user.getName())
             .withExpiresAt(new Date(System.currentTimeMillis() + 10 * 60 * 1000)) // 10 minutos
             .withIssuer(request.getRequestURL().toString())
             /* claims son una serie de reglas */
@@ -135,11 +127,9 @@ public class UserController {
       throw new RuntimeException("Refresh token is missing");
     }
   }
-}
 
-/*
- * fijate como se crea clases para tipar la @RequestBody.Muy ingenioso.Y el uso de @Data al pelo
- */
+}
+/* ojo que la anoto con @Data para usar su AllConstructor */
 @Data
 class RoleToUserForm {
   private String username;

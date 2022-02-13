@@ -2,7 +2,7 @@
 
 Source: https://www.youtube.com/watch?v=VVn9OG9nfH0
 
-Voy a Spring Initializtr y creo un proyecto Jar con las dependencias Spring Web,Spirng Security,Msyql Driver,Spring Data JPA ,Spring DevTools y Lombok.
+Voy a Spring Initializtr y creo un proyecto Jar con las dependencias Spring Web,Spring Security,Msyql Driver,Spring Data JPA ,Spring DevTools y Lombok.
 
 Siempre que vaya a crear una aplicación debería pensar en el diseño de la misma,ya que hay varias formas de realizar lo mismo.
 
