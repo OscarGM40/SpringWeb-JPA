@@ -55,6 +55,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
     // http.authorizeRequests().anyRequest().permitAll();
 
     /* todos pueden acceder al login,solo los ROLE_USER pueden ver /api/user y solo los ADMIN pueden crear por POST.Además,cada request debe estar autenticado */
+    http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/token/refresh").permitAll();
     http.authorizeRequests().antMatchers(HttpMethod.POST, "/api/login").permitAll();
     http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/user/**").hasAnyAuthority("ROLE_USER");
     http.authorizeRequests().antMatchers(HttpMethod.POST,"/api/user/save/**").hasAnyAuthority("ROLE_ADMIN");

@@ -33,7 +33,7 @@ public class CustomAuthorizationFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
 
     /* si estamos en el login no quiero que procese nada el middleware */
-    if (request.getServletPath().equals("/api/login")) {
+    if (request.getServletPath().equals("/api/login") || request.getServletPath().equals("/api/token/refresh")) {
       filterChain.doFilter(request, response);
       return;
     } else {

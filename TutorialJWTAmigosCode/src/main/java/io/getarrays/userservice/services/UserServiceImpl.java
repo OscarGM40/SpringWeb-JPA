@@ -37,7 +37,7 @@ public class UserServiceImpl implements UserService,UserDetailsService{
       log.info("User found in the database: {}", user);
     }
     /* tengo que devolver un UserDetails fijate */
-    /* para diferenciarlo de un User escribo el full qualifier name (new org.springframework.security.core.userdetails.User )*/
+    /* para diferenciarlo de un User mio y que resalte suelen escribir el full qualifier name (new org.springframework.security.core.userdetails.User ) o me aseguro que el import es correcto */
 
     /* Tengo que recorrer cada usuario añadiendole los roles que tenga */
     Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();

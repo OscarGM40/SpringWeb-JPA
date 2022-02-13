@@ -567,4 +567,29 @@ Añado el filtro,pero fijate que usaré addFilterBefore para que sea un filtro a
     
 Bien,es hora de probar.Puedo tratar de acceder a /api/users sin autenticarme y no debería de poder.Despues debo crear el Header Authorization y usar "Bearer {JWT}".Puedo probar con tokens incorrectos y tampoco debo poder acceder.
 Por último pruebo con un token correcto.Todo OK.jose luiz
-1h49m
+Fijate que debería de hacer el proyecto yo de nuevo,lo haré mañana.
+Recuerda que con la dependencia SpringBoot DevTools se refresca sólo el Tomcat.
+
+								REFRESH TOKEN
+
+Nos falta trabajar un poco en el refresh token.Vamos a crear un endpoint donde se renueve ese refresh token.
+
+IMPORTANTE: igual que en Node request y response son objetos globales lo mismo sucede en Spring,puedo usar las clases HttpServletResponse y HttpServletRequest donde quiera.Asi que voy a llamarlas simplemente:
+
+ @GetMapping("/role/addtouser")
+ public void refreshToken(HttpServletRequest request, HttpServletResponse response) {
+  ... logica aqui
+  }
+
+Fijate como tengo acceso a la request y response en cualquier parte de mi proyecto.
+
+NOTA: parece que escribir en las cabeceras tiran una IOException:
+
+ response.setHeader("error", e.getMessage()); <- luego obligará a esto
+
+ @GetMapping("/token/refresh")
+ public void refreshToken(HttpServletRequest request, HttpServletResponse response) throws IOException
+
+Falta permitir ese path en la aplicación.Ojo,que la ruta debe ser exacta:
+ http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/token/refresh").permitAll(); <- nada de /api/token/refresh?** | refresh/**.
+Repetir todo al menos una vez para memorizarlo.
