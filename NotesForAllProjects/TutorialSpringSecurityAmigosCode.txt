@@ -593,3 +593,27 @@ NOTA: parece que escribir en las cabeceras tiran una IOException:
 Falta permitir ese path en la aplicación.Ojo,que la ruta debe ser exacta:
  http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/token/refresh").permitAll(); <- nada de /api/token/refresh?** | refresh/**.
 Repetir todo al menos una vez para memorizarlo.
+
+					SPRING DATA JPA	INTRO BY AMIGOSCODE
+
+Source: https://www.youtube.com/watch?v=8SGI_XS5OPw&list=PLwvrYc43l1MzeA2bBYQhCWr2gvWLs9A7S&index=2
+
+Spring Data JSA es una abstracción sobre la JPA API(Java Persistence API) y Hibernate.Sirve para acceder,persistir y manejar datos entre objetos Java.
+Hibernate es un ORM que mapeará una Clase con un registro.
+
+Su integración con SpringBoot es muy grande,pudiendose configurar muy rápido y con facilidad.Sus annotations suelen venir pues de javax.persistence(como @Entitiy,@Id @Column @GeneratedValue),ya que acabamos de decir que Spring Data JPA usa la Java Persistence API.
+
+NOTA;fijate que puedo usar nullable=false cuando quiera un campo que admita nulls o updatable=false si quiero que no se pueda cambiar su valor.TAmbién puedo usar unique para que cada valor deba ser diferente.
+
+NOTA: fijate que JPARepository permite acceder a esta interfaz JPA,y que JPARepository hereda de PagingAndSortingRepository y de CrudRepository,asi que también puedo implementar paginación de forma fácil en un backend Java.
+
+Y dentro de @Table puedo darle nombre a las constraints:
+@Table( name="student",uniqueConstraints={ @UniqueConstraint(name="student_email",column="email")
+public class Student{...}
+
+POSTGRES shortcuts:
+\l <- list databases
+\c <- list current user and database connected
+\dt <- list tables
+\du <- display user
+\d+ <table> <- list columns
