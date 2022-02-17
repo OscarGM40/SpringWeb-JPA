@@ -194,7 +194,100 @@ public class PasswordEncoder {
 }
 Importante:fijate que este proyecto es un poco más complejo,pero al loadUserByUsername lo llamé en AppUserService,que con ayuda del repo que extiende de Jpa me lo carga por email.Son varias cosas pero no es complejo.
 
-
-
-
 					LOGICA PARA REGISTRAR UN USUARIO
+
+Playing around: jugando con ello,jugando por ahí,...
+Bien,vamos a crearnos una clase helper para checkear el campo email.Será una clase que implemente la interfaz Predicate<T> y desarrolle su método test(String t):boolean.
+Fijate que T será el tipo de lo que quiero chequear,en este caso será el valor que traiga el <input type=email> asi que será Predicate<String>:
+
+@Service
+public class EmailValidator implements Predicate<String> {
+  @Override
+  public boolean test(String){
+    return t.contains("@");
+  }
+}
+Obviamente irá una regexp aqui más complicada.
+Bien,asinto fijate que \x es una opción básica para la consola de PostGreSQL.Activa o desactiva el expanded display.
+NOTA:fijate que tuvo algún que otro fallo.Nos olvidamos poner valores por defecto para locked y enabled:
+
+ private Boolean locked=false;
+ private Boolean enabled=false;
+
+Solamente activaremos la cuenta tras el email de confirmación,obviamente.Fijate que Java tiene un sistema de registro bastante robusto por defecto.
+
+Bien,ya es hora de registrar un User,simplemente el controlador que llame a un método de un Service que lo guarde con ayuda del reposiorio:
+ @PostMapping
+  public String register(@RequestBody RegistrationRequest request) {
+    return registrationService.register(request);
+  }
+
+Ese register llama a éste,que está en un @Service.No sé porque creó dos,con uno quizas hubiera sido mejor??:
+
+  public String register(RegistrationRequest request) {
+    boolean isValidEmail = emailValidator.test(request.getEmail());
+    if (!isValidEmail) {
+      throw new IllegalStateException("Invalid email address");
+    }
+    return appUserService.signUpUser(
+      new AppUser(
+        request.getFirstName(),
+        request.getLastName(),
+        request.getEmail(),
+        request.getPassword(), 
+        AppUserRole.USER
+        )
+    );
+  }
+
+Sea como sea,ese signUpUser del otro @Service AppUserService luce así:
+
+  public String signUpUser(AppUser appUser) {
+     boolean userExists = appUserRepository.findByEmail(appUser.getEmail()).isPresent();
+    
+    if (userExists) {
+      throw new IllegalStateException("User with this email (" + appUser.getEmail() + ") already exists");
+    }
+    String encodedPass = bCryptPasswordEncoder.encode(appUser.getPassword());    
+    appUser.setPassword(encodedPass);
+    /* recuerda guardarlo a la DB mediante el repository */
+    appUserRepository.save(appUser);
+    // TODO : send confirmation token
+    return "User registered successfully";
+  }
+
+Fijate que hay que comprobar la uniqueness del email,encriptar la password y guardar el user.En este punto ya puedo guardar un User,e incluso ir a localhost:8080/login y tratar de hacer signIn,pero no podré porque la cuenta está disabled.Fijate es por querer implementar esta opción por lo que tuvimos que imlementar UserDetails y sobreescribir todos sus métodos,pero ahora ya veo los beneficios.
+
+				IMPLEMENTING VERIFICATION LINK AND SENDING EMAILS
+
+Vamos a crear una Entity para el token,ya que tiene bastantes features.Fijate en el uso de LocalDateTime para el issuedAt,expiresAt o confirmedAt:
+
+@Entity @Getter @Setter @NoArgsConstructor
+public class ConfirmationToken {
+
+  @Id
+  @SequenceGenerator(name = "confirmation_token_sequence", sequenceName = "confirmation_token_sequence", allocationSize = 1)
+  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "confirmation_token_sequence")
+  private Long id;
+  
+ @Column(nullable=false)
+  private String token;
+
+  @Column(nullable=false)
+  private LocalDateTime issuedAt;
+
+  @Column(nullable=false)
+  private LocalDateTime expiresAt;
+  private LocalDateTime confirmedAt;
+
+  public ConfirmationToken(String token,
+      LocalDateTime issuedAt,
+      LocalDateTime expiresAt,
+      LocalDateTime confirmedAt) {
+    this.token = token;
+    this.issuedAt = issuedAt;
+    this.expiresAt = expiresAt;
+    this.confirmedAt = confirmedAt;
+  }
+Además,casi todas las columnas no pueden ser nulas por motivos obvios.
+1h08m

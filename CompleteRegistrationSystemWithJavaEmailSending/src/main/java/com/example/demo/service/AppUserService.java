@@ -1,11 +1,13 @@
 package com.example.demo.service;
 
+import com.example.demo.models.AppUser;
 import com.example.demo.repository.AppUserRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import lombok.AllArgsConstructor;
@@ -17,6 +19,7 @@ public class AppUserService implements UserDetailsService {
   @Autowired
   private AppUserRepository appUserRepository;
   private final static String EMAIL_NOT_FOUND="User with this email (%s) not found in our database.Consider registering first";
+  private final BCryptPasswordEncoder bCryptPasswordEncoder;
   
   @Override
   public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
@@ -24,6 +27,20 @@ public class AppUserService implements UserDetailsService {
       .findByEmail(email)
       .orElseThrow(() -> new UsernameNotFoundException(
         String.format(EMAIL_NOT_FOUND, email)));
+  }
+  
+  public String signUpUser(AppUser appUser) {
+    boolean userExists = appUserRepository.findByEmail(appUser.getEmail()).isPresent();
+    
+    if (userExists) {
+      throw new IllegalStateException("User with this email (" + appUser.getEmail() + ") already exists");
+    }
+    String encodedPass = bCryptPasswordEncoder.encode(appUser.getPassword());    
+    appUser.setPassword(encodedPass);
+    /* recuerda guardarlo a la DB mediante el repository */
+    appUserRepository.save(appUser);
+    // TODO : send confirmation token
+    return "User registered successfully";
   }
   
 }
