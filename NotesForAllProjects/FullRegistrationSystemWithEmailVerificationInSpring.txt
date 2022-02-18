@@ -42,18 +42,18 @@ public class AppUser implements UserDetails {
   private String password;
 
   @Enumerated(EnumType.STRING)
-  private AppUserRole appUserRole; <- AppUserRole será una enum,recuerda que una enum debe ser anotada con su tipo de dato en Spring
+  private AppUserRole appUserRole; <- AppUserRole será una enum,recuerda que una enum debe ser anotada con su tipo de dato en Spring(EnumType.XXX)
 
 package com.example.demo.appuser;
 
 public enum AppUserRole {
   USER, ADMIN
 }
-También necesitare un par de propiedades más:
+También necesitare un par de propiedades más,pues vamos a sobreescribir todas las de UserDetailsService:
 private Boolean locked;
 private Boolean enabled;
 
-IMPORTANTE:para acceder al nombre de esa enum Java ya me proporciona el método name():
+IMPORTANTE:para acceder al nombre de esa enum Java ya me proporciona el método getter enum.name() en el propio lenguaje:
   SimpleGrantedAuthority authority = new SimpleGrantedAuthority(appUserRole.name()); <- name es buil-in method
 
 Con todo esto retorno una lista inmutable:
@@ -290,4 +290,56 @@ public class ConfirmationToken {
     this.confirmedAt = confirmedAt;
   }
 Además,casi todas las columnas no pueden ser nulas por motivos obvios.
-1h08m
+
+IMPORTANTE: recuerda que puedo tener tres tipos de unión.Cuando sea @ManyToMany no hace falta especificar donde se unen las tablas,pues se creara una tercera tabla con los IDs.Pero fijate que la relación entre tokens y usuarios es muchos a uno,pues un usuario puede tener muchos tokens pero un token sólo tendrá un usuario.
+
+Este tipo de relación 1 a m no crea una tercera tabla y me obliga a usar las anotaciones @ManyToOne y @JoinColumn(name="FK_NAME"):
+
+@ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(nullable=false, name = "app_user_id") <- nullable es obligatorio??
+  private AppUser appUser;
+
+NOTA: recuerda trabajar con Optional<T> si llega el caso:
+
+@Repository
+public interface ConfirmationTokenRepository extends JpaRepository<ConfirmationToken, Long> {
+  Optional<ConfirmationToken> findByToken(String token);
+}
+
+Fijate como va a crear un token con un simple string random( y como la libreria UUID ya forma parte del core de java):
+
+  String token = UUID.randomUUID().toString();
+
+    ConfirmationToken confirmationToken = new ConfirmationToken(
+      token,
+      LocalDateTime.now(),
+      LocalDateTime.now().plusMinutes(15),
+      null,
+      appUser);
+
+   confirmationTokenService.saveConfirmationToken(confirmationToken);
+
+    return token;
+
+Lo guardo en la DB y lo devuelvo.Puedo hacer alguna comprobación.Ahora necesito una forma de comprobar y validar el token.
+
+Fijate como hizo una query con HQL:
+ 
+   @Transactional
+   @Modifying
+   @Query("UPDATE ConfirmationToken c " +
+            "SET c.confirmedAt = ?2 " +
+            "WHERE c.token = ?1")
+    int updateConfirmedAt(String token, LocalDateTime confirmedAt);
+?2 y ?1 son los argumentos,según su orden.Genial.
+
+Fijate en esta otra:
+ @Transactional
+  @Modifying
+  @Query("UPDATE AppUser a " + "SET a.enabled = TRUE WHERE a.email = ?1")
+    int enableAppUser(String email);
+UPDATE table t set t.field <- es sql puro no? no es hql.
+
+Bien,al final tras visitar http://localhost:8080/api/v1/registration/confirm?token=89b3639b-ba6e-477b-a9f4-c58b2e8e37c9 con un token valido que coincide con el id hara se update ConfirmationToken c SET c.confirmedAt = ?2 where c.token = ?1.Puedo ver en la db que cambia enabled a true en el user y confirmedAt en la otra tabla
+Incluso podré ir a localhost:8080/login y logearme ya.
+1h23m
