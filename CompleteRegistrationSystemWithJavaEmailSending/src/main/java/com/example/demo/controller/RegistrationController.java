@@ -22,7 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 public class RegistrationController {
 
   @Autowired
-  private RegistrationService registrationService;
+  private final RegistrationService registrationService;
  
   @PostMapping
   public String register(@RequestBody RegistrationRequest request) {
