@@ -30,6 +30,7 @@ public class EmailService implements EmailSender {
       helper.setTo(to);
       helper.setSubject("Confirmación de registro");
       helper.setFrom("hello@amigoscode.com");
+      javaMailSender.send(mimeMessage);
 
     } catch (MessagingException e) {
       LOGGER.error("Failed sending email", e);

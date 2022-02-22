@@ -366,7 +366,7 @@ public class EmailService implements EmailSender {
       helper.setTo(to);
       helper.setSubject("Confirmación de registro");
       helper.setFrom("hello@amigoscode.com");
-
+      javaMailSender.send(mimeMessage);
     } catch (MessagingException e) {
       LOGGER.error("Failed sending email", e);
       throw new IllegalStateException("Failed to send email");
@@ -395,4 +395,88 @@ LLamaremos a este método en el register:
        buildEmail(request.getFirstName(),link));
     return token;    
 
-1h33m
+Bien,ya tenemos todo.Solo falta un email server para testear este envio.Hay uno muy bueno escrito en Node.Se llama 'maildev'
+NOTA: MailDev es una simple forma de testear los emails generados por tu proyecto durante la fase de desarrollo con una interfaz web sencilla que corre en tu navegador.Esta escrito en NodeJs
+
+Instalar(npm o Docker Image):
+npm install -g maildev 
+>maildev <- ejecutar
+ó con Docker
+docker run -p 1080:1080 -p 1025:1025 maildev/maildev
+
+Ver más en su repo: https://github.com/maildev/maildev
+MailDev webapp running at http://0.0.0.0:1080
+MailDev SMTP Server running at 0.0.0.0:1025
+Como puedo ver necesita el 1025 para el protocolo SMTP y el 1080 para la Interfaz
+
+IMPORTANTE: ahora hay que configurar mi aplicación,en este caso el application.properties para que apunte aqui,a este servidor fake local!:
+
+# configure email sending to pinpoint mi local email server
+# username and password doesn't matter
+spring.mail.host=localhost
+spring.mail.port=1025
+spring.mail.username= hello
+spring.mail.password= hello
+
+spring.mail.properties.mail.smtp.ssl.trust=*
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.connectiontimeout=50000
+spring.mail.properties.mail.smtp.timeout=3000
+spring.mail.properties.mail.smtp.writetimeout=5000
+
+Bien,hago una prueba y veo que activo al usuario,pudiendo hacer login.Y si hago click en el enlace de nuevo me da un error 500.Genial:
+There was an unexpected error (type=Internal Server Error, status=500).
+email already confirmed
+
+Incluso puedo hacer la prueba haciendo que expire el token:
+update confirmation_token set expires_at= now() - interval '1 day' where id=2;
+
+Si trato de hacer click en un token expirado para activar mi cuenta veré otro error 500,pero el error es otro:
+There was an unexpected error (type=Internal Server Error, status=500).
+token expired
+
+NOTA: quien gestiona esto?Lo hicimos nosotros?Confirmo,asi es son nuestras IllegalStateExceptions:
+
+   if (userExists) {
+      throw new IllegalStateException("User with this email (" + appUser.getEmail() + ") already exists");
+    }
+
+Resumen:tengo dos controladores,uno registra al usuario,sin activarlo:
+
+ @PostMapping
+  public String register(@RequestBody RegistrationRequest request) {
+    return registrationService.register(request);
+  }
+
+  @GetMapping(value="confirm")
+  public String confirm(@RequestParam("token") String token) {
+    log.info("Confirming token {}", token);
+    return registrationService.confirmToken(token);
+    // return "confirming";
+  }
+
+El otro es donde apuntará el link que se envia al correo.
+Ese registrationService.register registra al usuario y le manda un mail:
+
+  public String register(RegistrationRequest request) {
+    boolean isValidEmail = emailValidator.test(request.getEmail());
+    if (!isValidEmail) {
+      throw new IllegalStateException("Invalid email address");
+    }
+    String token = appUserService.signUpUser(
+      new AppUser(
+        request.getFirstName(),
+        request.getLastName(),
+        request.getEmail(),
+        request.getPassword(), 
+        AppUserRole.USER
+        )
+    );
+    String link = "http://localhost:8080/api/v1/registration/confirm?token=" + token;
+    emailSender.send(
+      request.getEmail(),
+       buildEmail(request.getFirstName(),link));
+    return token;    
+  }
+Al registrarse se genera un token,sin fecha de confirmación y con una validez concreta,se envia un email y si el usuario confirma ese token dentro de ese tiempo de vigencia se activa.La tarea no sería muy dificil,sería mirar el token y sus propiedades,etc...

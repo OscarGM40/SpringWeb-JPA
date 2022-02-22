@@ -94,7 +94,7 @@ public class RegistrationService {
                 "              </a>\n" +
                 "            </td>\n" +
                 "          </tr>\n" +
-                "        </tbody></table>\n" +
+            "        </tbody></table>\n" +
                 "        \n" +
                 "      </td>\n" +
                 "    </tr>\n" +
