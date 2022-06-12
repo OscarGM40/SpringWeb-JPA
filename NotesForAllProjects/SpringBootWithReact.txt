@@ -1,0 +1,78 @@
+				SPRING BOOT S3 FILE UPLOAD WITH REACT 2021
+
+Playlist: https://www.youtube.com/watch?v=i-hoSg8iRG0&list=PLwvrYc43l1MzeA2bBYQhCWr2gvWLs9A7S&index=13&ab_channel=Amigoscode
+
+Repo: https://github.com/amigoscode/spring-s3-react-file-upload
+
+En esta aplicación vamos a subir a S3 imágenes usando un backend en Spring y el front con React.Como dependencias Spring uso cualquier SpringBoot > 2 y elijo Spring Web como dependencia.
+
+			INSTALAR AWS JAVA SDK - ENLAZANDO JAVA CON AWS
+
+Simplemente busco la dependencia maven para aws:
+<!-- https://mvnrepository.com/artifact/com.amazonaws/aws-java-sdk -->
+<dependency>
+    <groupId>com.amazonaws</groupId>
+    <artifactId>aws-java-sdk</artifactId>
+    <version>1.11.649</version>
+</dependency>
+
+			AWS GENERATE ACCESS TOKEN - CREDENTIALS
+
+Puedo generar una Access Key(un ID + un secret)  para acceder programáticamente a AWS,es decir,para identificarme contra ellos con esa key.De su documentación:
+
+* Utilice las claves de acceso para realizar llamadas mediante programación a AWS desde la CLI de AWS, las herramientas para PowerShell, los SDK de AWS o llamadas directas a la API de AWS. Puede tener un máximo de dos claves de acceso (activas o inactivas) a la vez.
+
+Para su protección, no comparta nunca las claves secretas. Como práctica recomendada, sugerimos un cambio frecuente de las claves.
+
+Esa opción esta en mi avatar(credenciales de seguridad).Genero una y descargo el .csv
+
+Bien.Para identificar la app creo una clase que me pedirá esta Access Key:
+
+@Configuration
+public class AmazonConfig {
+
+	@Bean
+    public AmazonS3 s3(){
+      AWSCredentials awsCredentials = new BasicAWSCredentials("AKIAJX7X7Q7Q2ZQ7ZQ7A", "ZQ7Q2ZQ7A");
+   return ... }
+
+						CREATING S3 BUCKET
+
+Simplemente eligo S3 en el dashboard(recuerda que S3 es su zona de almacenamiento).Creo un nuevo bucket,le doy un nombre 'amigos-code-image-upload',especifico una region y lo creo(el nombre de cada bucket o cubo debe ser único de entre los que tenga yo)
+NOTA:si bien podría crear el Bucket desde Spring no se recomienda.O bien uso Terraform(IaaC) o lo hago manualmente.
+
+					SAVING FILES TO THE S3 BUCKET
+
+IMPORTANTE:fijate que en métodos por referencia van a pasarse los argumentos también como en JS,automáticamente:
+map.forEach( (key,value) -> objectMetadata.addUserMetadata(key,value) 
+* puedo resumirlo en :
+map.forEach(objectMetadata::addUserMetadata); <- entonces pasan todos?Esto no creo que puede hacerse en Javascript
+
+Bien al final queda así el método que llamaré en el controlador 
+
+@Service
+public class FileStore {
+  private final AmazonS3 s3;
+
+  @Autowired
+  public Filestore(AmazonS3 s3){
+   this.s3=s3;
+  }
+
+ public void save(String path,String fileName, Optional<Map<String,String>> optionalMetadata,InputStream inputStream){
+
+**al usar un Optional puede ser null
+ObjectMetadata objectMetadata = new ObjectMetadata();
+
+optionalMetadata.ifPresent( map ->
+  if(!map.isEmpty()){
+  map.forEach(objectMetadata::addUserMetadata);
+});
+Fijate que ifPresent(map -> ) ese map es el map,es un nombre cualquiera podia haberle dado m o x.
+
+try{
+  s3.putObject(path,fileName,inputStream,objectMetadata);
+ }catch(AmazonServiceException e){
+ throw new IllegalStateException("Error al guardar el archivo",e);
+ }
+minuto 25

@@ -1,0 +1,281 @@
+					SERVER MANAGER APP WITH SPRING-MYSQL AND ANGULAR
+
+Source: https://www.youtube.com/watch?v=8ZPsZBcue50&t=5637s
+
+Empezamos creando un proyecto con Spring Initializr con las dependencies Spring Web,Mysql Driver,Spring Data JPA, Lombok y Validation.Usaremos Maven.
+NOTA: Spring Web usa Apache Tomcat como default embebbed server
+
+			CREANDO EL MODELO
+
+Lo primero que vamos a hacer es crear los modelos(fijate que los llama también domains).Va a ser muy sencillo,ni siquiera hay relaciones.Fijate en el uso de lombok:
+
+@Entity
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
+public class Server {
+
+  @Id @GeneratedValue(strategy = GenerationType.AUTO)
+  private Long id;
+  @Column(unique = true) // no queremos la misma IP dos veces
+  @NotEmpty(message = "Ip Address cannot be empty or null")
+  private String ipAddress;
+  private String name;
+  private String memory;
+  private String type;
+  private String imageUrl;
+  private Status status; // enum
+}
+
+Fijate como luce la enum(primero,va en minusculas,segundo,lleva una propiedad de campo de tipo string,parece que requiere al menos una).
+public enum Status {
+  SERVER_UP("SERVER_UP"),
+  SERVER_DOWN("SERVER_DOWN");
+
+  private final String status;
+
+  Status(String status){
+    this.status = status;
+  }
+
+  public String getStatus(){
+    return this.status;
+  }
+}
+Ahora nos falta definir la forma en la que manipularemos los datos en la database,es decir,que hará al guardar un Server,al borrarlo,... es aqui donde entra JPA.
+
+					REPOSITORIES - SPRING DATA JPA
+
+Creo el package repository y una interfaz(ServerRepo.java).Esta interfaz heredará de la clase JpaRepository<Domain,ID>.Sólo por heredarla,tendré acceso a métodos como find,findAll,findAllById,save,...Éstos no tengo que definirlos manualmente,pues me los da la superclase,pero si que tengo que definir cualquier otro que quiera usar(por ejemplo,buscar por ipAddress).El nombre del método es crucial,pues va a hacerse un select by con ese nombre.
+
+@Repository
+public interface ServerRepo extends JpaRepository<Server, Long> {
+  Server findByIpAddress(String ipAddress);
+}
+IMPORTANTE: fijate que el campo ipAddress es único,esto es importante,si no deberiía haber sido findAllByXXX(por ejemplo buscar por nombre)
+
+TIP:puedo observar que los pasos siempre son los mismos,mapear una clase a una Entidad,crearla un repositorio de acceso a datos y despues un servicio donde defino métodos para la funcionalidad que quiera.El servicio lo consumirán los controladores,o cualquier otro archivo/método que lo necesite.
+
+					SERVICES
+
+Fijate que de momento creo una abstracción donde defino los métodos que usaré,pero no los desarrollo.Puedo definir lo que quiera,pero fijate que JpaRepository se quedó muy corto y hay que hacer esto.
+
+public interface ServerService {
+  Server create(Server server);
+  Server ping(String ipAddress);
+  Collection<Server> list(int limit);
+  Server get(Long id);
+  Server update(Server server);
+  Boolean delete(Long id);
+}
+
+Vayamos con las implementaciones.Crearemos otro folder para ello.Lo llamaré implementations.Será una clase que implemente la interfaz(fijate que a esta si que la anoto con @Service para inyectarla):
+
+public class ServerServiceImpl implements ServerService {
+* En este punto podría meter la clase en el folder Services y hacer la interfaz privada,o dejarla pública y puedo meter esa clase en su propio folder.
+
+			REQUIRED ARGS CONSTRUCTOR ANNOTATION
+
+Con la anotación @RequiredArgsConstructor sobre una clase Lombok va a meter todos los campos de clase en un constructor,es decir,que crea el constructor con los campos:
+
+Es decir,esto:
+@RequiredArgsConstructor
+public class ServerServiceImpl {
+  private final ServerRepo serverRepo;
+
+es equivalente a esto:
+public class ServerServiceImpl {
+  private final ServerRepo serverRepo;
+  constructor(ServerRepo serverRepo){
+    this.serverRepo = serverRepo;
+
+IMPORTANTE: y al realizar esto se va a dar la inyección de dependencias,realmente es para lo que lo hacemos.Fijate también que si un método lanza una excepción tengo que decirlo cuando lo defina en la abstracción:
+
+  @Override
+  public Server ping(String ipAddress) throws IOException { <- esto implica que
+    log.info("Pinging Server IP: {}", ipAddress);
+    // primero lo busco,despues le hago ping
+    Server server = serverRepo.findByIpAddress(ipAddress);
+    InetAddress inetAddress = InetAddress.getByName(ipAddress);
+    // InetAddress.isReachable(timeout máximo)
+    server.setStatus(inetAddress.isReachable(10000) ? Status.SERVER_UP : Status.SERVER_DOWN);
+    // tras cambiarle el estado lo guardo
+    serverRepo.save(server);
+    return server;
+  }
+
+Ese throws implica que lo defina ya en el padre:
+ Server ping(String ipAddress) throws UnknownHostException, IOException;
+Además,lo mejor es usar try/catch y no lavarse las manos como estamos haciendo
+NOTA: fijate que hemos usado la clase java.net.InetAddress para hacer el ping.
+
+Recuerda que en una app real un servicio no va a ser tan sencillo como esto:
+  @Override
+  public Server get(Long id) {
+    log.info("Fetching server with id: {}",id);
+    return serverRepo.findById(id).get();
+  }
+Habrá validaciones,testing,...
+Fijate como va a ser el helper que decidirá entre 4 imagenes de forma aleatoria una de ellas:
+
+private String setServerImageUrl() {
+  String[] imageNames = {"server1.png","server2.png","server3.png","server4.png"};
+  return ServletUriComponentsBuilder.fromCurrentContextPath().path("/server/images/"+ imageNames[new Random().nextInt(4)]).toUriString();
+}
+
+	CREANDO UNA CLASE RESPONSE PARA MEJORAR LA CONSISTENCIA DE MIS RESPUESTAS
+
+Fijate que es buena idea realizar esto,independientemente del lenguaje o frame.
+En este caso lucirá asi(observar Map<?,?> que aceptará cualquier cosa
+
+// fijate que no es obligatorio crear una clase/modelo para las respuestas,pero si lo hago las respuestas quedan más consistentes
+@Data
+@SuperBuilder //crea el constructor private con el patrón Builder
+@JsonInclude(value = JsonInclude.Include.NON_NULL) // para que no se envie nulos
+public class Response {
+
+  protected LocalDateTime timeStamp;
+  protected int statusCode;
+  protected HttpStatus status; <- viene de spring.http.HttpStatus
+  protected String reason;
+  protected String message;
+  protected String developerMessage; // mensaje más técnico  
+  protected Map<?,?> data; // mapa con cualquier tipo de dato
+  
+}
+ 
+Creemos pues ya la clase que contenga los controladores.
+
+					CREATING CONTROLLER
+
+Fijate que aqui sale a relucir los beneficios de haber creado la clase/contrato anterior,ya que va a ir como genérico de ResponseEntity<Response>,dejandome mandar todas las propiedades que quiera en la respuesta que mandaré,dejandola altamente customizada.Fijate en que también eran protected por razones obvias:
+
+@RestController
+@RequestMapping("/server")
+@RequiredArgsConstructor // crea el constructor e inyecta la dependency
+public class ServerController {
+
+  // de nuevo usamos inyección por constructor === @RequiredArgsConstructor
+  private final ServerServiceImpl serverService;
+  
+  @GetMapping("/list")
+  public ResponseEntity<Response> getServers() {
+    return ResponseEntity.ok(
+        Response.builder()
+            .timeStamp(LocalDateTime.now())
+            .data(Map.of("servers", serverService.list(10)))
+            .message("Servers retrieved")
+            .status(HttpStatus.OK)
+            .statusCode(HttpStatus.OK.value())
+            .build());
+  }
+
+Observa que si la prop se llamó  protected Map<?,?> data; aqui hago data(Map<?,?) y data espera un Map,obviamente.Sencillamente genial.
+
+En cuanto al controlador + ruta para hacer ping,fijate que @PathVariable("Name") rescatará el pathParam llamado Name:
+
+  @GetMapping("/ping/{ipAddress}")
+  public ResponseEntity<Response> pingServer(
+    @PathVariable("ipAddress") String ipAddress) throws IOException {
+    Server server = serverService.ping(ipAddress);
+    return ResponseEntity.ok(
+        Response.builder()
+            .timeStamp(LocalDateTime.now())
+            .data(Map.of("servers", server))
+            .message(server.getStatus() == Status.SERVER_UP ? "Ping success" : "Ping failed")
+            .status(HttpStatus.OK)
+            .statusCode(HttpStatus.OK.value())
+            .build());
+  }
+
+Si tuviera @GetMapping("/client/{idClient}") tendría que rescatarlo así:
+public ResponseEntity<Response> getClientById(@PathVariable("idClient") String idClient){ code...}
+
+Para guardar el server me vendrá por el body:
+ @PostMapping("/save")
+  public ResponseEntity<Response> saveServer(@RequestBody @Valid Server  server) { code...}
+
+NOTA:fijate que @Valid hará saltar esta validación del modelo:
+@NotEmpty(message = "Ip Address cannot be empty or null")
+private String ipAddress;
+
+Dado que es un POST lo suyo es mandar httpStatus.CREATED,etc...
+
+@PostMapping("/save")
+  public ResponseEntity<Response> saveServer(@RequestBody @Valid Server  server) {
+    return ResponseEntity.ok(
+        Response.builder()
+            .timeStamp(LocalDateTime.now())
+            .data(Map.of("server", server))
+            .message("Server created")
+            .status(HttpStatus.CREATED) // 201
+            .statusCode(HttpStatus.CREATED.value())
+            .build());
+  }
+
+En cuanto al getOne fijate que rescato el PathVariable ya como un Long(pero no venia siempre como String en Java??):
+
+  @GetMapping("/get/{id}")
+  public ResponseEntity<Response> getServer(@PathVariable("id") Long id) {
+    Server server = serverService.get(id);
+    return ResponseEntity.ok(
+         Response.builder()
+            .timeStamp(LocalDateTime.now())
+            .data(Map.of("server", server))
+            .message("Server retrieved")
+            .status(HttpStatus.OK) //200
+            .statusCode(HttpStatus.OK.value())
+            .build());
+  }
+
+Y para el delete casi lo mismo:
+
+  @DeleteMapping("/delete/{id}")
+  public ResponseEntity<Response> deleteServer(@PathVariable("id") Long id) {
+    return ResponseEntity.ok(
+         Response.builder()
+            .timeStamp(LocalDateTime.now())
+            .data(Map.of("server", serverService.delete(id)))
+            .message("Server deleted successfully")
+            .status(HttpStatus.OK) // 200
+            .statusCode(HttpStatus.OK.value()) // 200
+            .build());
+  }
+Fijate que cuando el código es consistente(crear la Response,abstracciones con los métodos correctos y servicios correctamente implementados) se vuelve muy fácil y repetitivo,incluso en Java.
+
+			ACCEDIENDO AL GESTOR DE ARCHIVOS DEL SISTEMA OPERATIVO
+
+Fijate que va a dejar las imagenes en downloads/images,ni siquiera las va a meter al proyecto.Para poder acceder aqui tendrá que hacer varios pasos.
+
+  @GetMapping(path = "/image/{fileName}",produces = MediaType.IMAGE_PNG_VALUE)
+  public byte[] getServerImage(@PathVariable("fileName") String fileName) throws IOException {
+    return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/Downloads/images/" + fileName));
+  }
+Observa que Paths.get(System.getProperty("user.home") me situó en /home y observa como en las anotaciones no hace falta especificar el argumento path mientras no lleve un segundo argumento como este caso,que lleva produces.Fijate que pasará un array de bytes con la imagen.
+Y observa que si las dejó en su SO tengo que usar las mias xd
+
+					CREANDO MOCK DATA
+
+Para crear fake data recuerda que puedo meter en la linea de comandos instrucciones desde el main file.Tengo que usar la clase CommandLineRunner y anotarla con @Bean.
+
+	@Bean
+	CommandLineRunner run(ServerRepo serverRepo){
+		return args -> {
+			serverRepo.save(new Server(
+				null,
+				"192.168.1.160",
+				"Ubuntu Linux",
+				"16 GB",
+				"Personal PC",
+				"http://localhost:8080/server/image/server1.png",
+				Status.SERVER_UP
+				));
+		};
+		// aqui pueden ir mas serverRepo.save...
+	};
+
+Sin embargo,me falta la conexión a la BBDD.
+
+						CONEXION CON LA DB 59M
+
+

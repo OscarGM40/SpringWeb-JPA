@@ -1,0 +1,619 @@
+		SPRING BOOT AND SPRING SECURITY WITH JWT AND ACCESS AND REFRESH TOKENS
+
+Source: https://www.youtube.com/watch?v=VVn9OG9nfH0
+
+Voy a Spring Initializtr y creo un proyecto Jar con las dependencias Spring Web,Spring Security,Msyql Driver,Spring Data JPA ,Spring DevTools y Lombok.
+
+Siempre que vaya a crear una aplicación debería pensar en el diseño de la misma,ya que hay varias formas de realizar lo mismo.
+
+En este caso el autor ya ha creado los dos Modelos:
+
+User {
+ id:Long
+ name: String
+ username: String
+ password: String
+ roles: Collection<Role>
+}
+
+Role{
+  id:Long
+  name:String
+}
+
+IMPORTANTE: fijate que los Roles los necesito en cuanto carge un usuario,y que la relacción es ManyToMany,siempre debo especificar el tipo de relacion en Spring,y como cargar los datos,en este caso queremos popular todo:
+  
+@ManyToMany(fetch = FetchType.EAGER)
+private Collection<Role> roles= new ArrayList<>();
+
+Fijate que el autor va a tomar otra aproximación diferente a usar @Getter y @Setter en cada propiedad con lombok también,y es usando @Data @NoArgsConstructor y @AllArgsConstructor(en que se diferencian unas de otras):
+
+@Entity @Data @NoArgsConstructor @AllArgsConstructor 
+public class User {...}
+
+También está siguiendo otra estrategia(AUTO en vez de IDENTITY):
+  @Id @GeneratedValue(strategy = GenerationType.AUTO)
+  private Long id;
+
+De nuevo,fijate que el autor llamó domains a models y repo a lo que el otro llamó DAO.Creo las interfaces y un método abstracto:
+
+public interface RoleRepo extends JpaRepository<Role, Long> {
+  Role findByName(String name);
+}
+NOTA:fijate que en una aplicación real nunca querré devolver todos los usuarios.Imaginate que son 50 millones.Además,el usuario ni siquiera podrá ver mas de 10 o  20 por pantalla a la vez.No tiene sentido devolver todos.
+
+Este autor va a usar Repository y en Service crea la interfaz y la implementación de la interfaz.Lucas creo sólo esto último,en vez de en el paquete Service en el Dao.
+Y anotó la clase con @Repository.
+@Repository
+@Transactional //permite ejecutar transacciones
+// @SuppressWarnings("unchecked")
+public class UsuarioDaoImpl implements UsuarioDao {
+
+
+Fijate que este autor va a realizar lo mismo,en otra carpeta y ademas creó el repository también.Perfecto.Es una mejor aproximación.
+
+Pero no sólo eso,sino que voy a inyectar el contructor con todas las propiedades con @RequiredArgsConstructor.Fijate que lo guardé anteriormante con @AllArgsConstructor:
+
+@Service @RequiredArgsConstructor <- requiero el constructor con todos los args
+@Transactional @Slf4j <- permito transacciones y quiero ver los logs
+public class UserServiceImpl implements UserService{
+  private final UserRepo userRepo;
+  private final RoleRepo roleRepo;
+
+NOTA: gracias a la anotación @Transactional realizar esto va a guardar el user con el role,es decir,que cuando sea necesario llegar a la tabla relacionada lo va a hacer automáticamente:
+
+ @Override
+  public void addRoleToUser(String username, String roleName) {
+    User user = userRepo.findByUsername(username);
+    Role role = roleRepo.findByName(roleName);
+    user.getRoles().add(role); <- con @Transactional lo guardará
+  }
+
+La verdad es que es una mejor aproximación la suya,ya que tiene todo lo que hace Lucas + acceso a JPARepository:
+
+ @Override
+  public User getUser(String username) {
+    return userRepo.findByUsername(username);
+  }
+
+  @Override
+  public List<User> getUsers() {
+    return userRepo.findAll();
+  }
+
+NOTA:obviamente en una aplicación real tendré que usar try/catch y gestionar los errores.
+Y gracias a la dependencia de logs de lombok (@Slf4j)  puedo crear algunos logs rápidamente:
+  
+@Override
+  public User saveUser(User user) {
+    log.info("Saving new user: " + user.getUsername());
+    return userRepo.save(user);
+  }
+
+  @Override
+  public Role saveRole(Role role) {
+    log.info("Saving new role {}", role.getName());
+    return roleRepo.save(role);
+  }
+
+NOTA: recuerda que puedo usar la anotación @RequestMapping("/api") para que toda la clase anotada deba usar  domain/api en vez de simplemente domain:
+
+@RestController
+@RequiredArgsConstructor
+@RequestMapping("/api") <- todo estará en localhost:8080/users
+public class UserController {
+
+Fijate que ResponseEntity es muy poderoso:
+ 
+ @GetMapping("/users")
+ public ResponseEntity<List<User>> getUsers() {
+    return ResponseEntity
+      .ok()
+      .body(userServiceImpl.getUsers());
+  }
+
+
+Creo el application.properties y arranco la app.Dado que tenemos Spring Security activo hago el login con 'user' + la pass de la consola.Fijate que está todo correcto.Practicar containerizando una app de Spring.
+
+En cuanto a guardar un User o un Role simplemente hay que usar @RequestBody:
+  @PostMapping("/user/save")
+  public ResponseEntity<User> saveUser(@RequestBody User user) {
+    return ResponseEntity
+      .status(HttpStatus.CREATED)
+      .body(userServiceImpl.saveUser(user));
+  }
+    @PostMapping("/role/save")
+    public ResponseEntity<Role> saveRole(@RequestBody Role role) {
+      return ResponseEntity
+        .status(HttpStatus.CREATED)
+        .body(userServiceImpl.saveRole(role));
+    }
+
+NOTA: en vez de mandar ok() puedo mandar created(null) (y status(HttpStatus.CREATED??).el autor incluso suele mandar la url del controlador de esta forma:
+
+* uri:URI devuelve la Url del controlador en un String
+ URI uri = URI.create(ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/user/save").toUriString());
+
+    return ResponseEntity
+      // .status(HttpStatus.CREATED)
+      .created(uri)
+      .body(userServiceImpl.saveUser(user));
+
+NOTA: al realizarlo asi la uri se manda en un header.Hará lo mismo para el saveRole:
+
+   @PostMapping("/role/save")
+    public ResponseEntity<Role> saveRole(@RequestBody Role role) {
+       URI uri = URI.create(ServletUriComponentsBuilder.fromCurrentContextPath().path("/api/role/save").toUriString());
+      return ResponseEntity
+        .created(uri)
+        .body(userServiceImpl.saveRole(role));
+    }
+
+IMPORTANTE: fijate como crea una clase interna on the fly para no pasar dos argumentos.Me gusta mucho:
+
+   @Data
+    class RoleToUserForm {
+      private String username;
+      private String roleName;
+    }
+
+NOTA: @Data de lombok parece que genera los Getter y Setter(luego es mucho mejor que ir de propiedad en propiedad).
+
+IMPORTANTE: cuando no vaya a devolver nada puedo usar ResponseEntity<?>.Esto implica no poder llamar a body() y en su lugar tener que llamar a build():
+
+    @PostMapping("/role/addtouser")
+    public ResponseEntity<?> saveRoleToUser(@RequestBody RoleToUserForm form) {
+       userServiceImpl.addRoleToUser(form.getUsername(), form.getRoleName()) ;
+
+      return ResponseEntity
+        .ok()
+        .build(); // si va vacia hay que llamar a build para que construya la response(con body se construye sola)
+    }
+Desde luego es bastante fácil todo hasta ahora.Hagamos un par de pruebas ya.
+
+			42m	CREATING DATA AND TESTING EVERYTHING UNTIL NOW		
+
+Para probar la api puedo hacer dos cosas,levantarla y con Postman u otra herramienta introducir datos haciendo hit a los endpoints o creando fake data ya desde la app.Usaremos esta segunda opción.
+
+Para esto usaremos la clase CommandLineRunner infiriendola con @Bean del contenedor de beans de Spring.Esta clase permite ejecutar comandos una vez se inicie la app:
+
+En el archivo main de una app de SpringBoot:
+@SpringBootApplication 
+public class UserserviceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(UserserviceApplication.class, args);
+	}
+	@Bean
+	CommandLineRunner run(UserService userService) {
+		return args -> {
+        /* todo lo que ponga aqui se ejecutará tras arrancar la app */
+		};
+	}
+}
+
+Sabiendo esto,creo algunos roles:
+@Bean
+CommandLineRunner run(UserService userService){
+  return args -> {
+    userService.saveRole(new Role(null,"ROLE_USER"));
+	userService.saveRole(new Role(null,"ROLE_MANAGER"));
+	userService.saveRole(new Role(null,"ROLE_ADMIN"));
+	userService.saveRole(new Role(null,"ROLE_SUOER_ADMIN"));
+}
+Perfecto.Continuo creadno algunos users y luego les asigno un rol:
+			/* ahora creo algunos users fake */
+			userService.saveUser(new User(null,"John Travolta","jonny","123456",new ArrayList<Role>()));
+			userService.saveUser(new User(null,"Will Smith","will","123456",new ArrayList<Role>()));
+			userService.saveUser(new User(null,"Sylvester Stallone","sylver","123456",new ArrayList<Role>()));
+
+			/* ahora le asigno roles a los users */
+			userService.addRoleToUser("jonny","ROLE_USER");
+			userService.addRoleToUser("will","ROLE_USER");
+			userService.addRoleToUser("sylver","ROLE_USER");
+			userService.addRoleToUser("jonny","ROLE_MANAGER");
+			userService.addRoleToUser("sylver","ROLE_MANAGER");
+			userService.addRoleToUser("jonny","ROLE_ADMIN");
+
+							SPRING SECURITY M47
+
+Si bien al tener activa Spring Security puedo acceder con 'user' y esa random pass,es momento de desactivar este usuario por default,ya que quiero usar mi user-pool(autenticación).
+También quiero gestionar el acceso a recursos en base al rol de ese usuario(autorización).Es importante distinguir entre autenticación(quién puede entrar) y autorización(a qué recursos está autorizado a acceder un usuario)
+
+Todo esto lo gestiona el módulo Spring Security,y para ello tendré que configurarlo en base a mis necesidades.Creo pues un folder llamado Security y la clase SecurityConfig,la cual llevará algunas annotations:
+
+IMPORTANTE: la clase de configuracion la debo anotar con @Configuration(cualquier clase anotada asi Spring la va a tomar como una configuracion.También va a extender de la clase core para configurar la Security de una Web,que es la clase WebSecurityConfigurerAdapter
+
+@Configuration @RequiredArgsConstructor @EnableWebSecurity
+public class SecurityConfig extends WebSecurityConfigurerAdapter{
+    @Override
+  protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    // TODO Auto-generated method stub
+    super.configure(auth);
+  }
+
+  @Override
+  protected void configure(HttpSecurity http) throws Exception {
+    // TODO Auto-generated method stub
+    super.configure(http);
+  }
+
+}
+
+Esta clase custom tendrá que sobrescribir el método configure por doble partida,de esta forma sobrescribo la Seguridad por defecto con la mia.Realmente es sencillo todo hasta ahora.
+
+IMPORTANTE: hay varias formas de buscar por la users-pool:
+1-  auth.inMemoryAuthentication() <- puedo pasarle usuarios en memoria
+2-   auth.jdbcAuthentication()   <- puedo pasarle una query SQL en ese momento
+Sin embargo al estar usando Spring JPA usaremos userDetailsService.
+
+Esta clase UserDetailsService siempre pide un userDetailsService,que es un bean que tengo que pedir y sobrescribir para decirle a Spring como luce un User.Fijate que importante es esto y el sentido que tiene.
+
+  /* beans core que tengo que proporcionar a Spring */
+  private final UserDetailsService userDetailsService;
+  private final BCryptPasswordEncoder bCryptPasswordEncoder;
+
+ /* autenticacion */  
+  @Override
+  protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+    auth.userDetailsService(userDetailsService).passwordEncoder(bCryptPasswordEncoder); 
+
+Y fijate de nuevo que obviamente hay que pasarle un encriptador para la password.La clase BCryptPasswordEncoder me valdrá.Ahora bien hemos dicho que estas dos clases necesitan un Bean,asi que tengo que proporcionarlo(por defecto no los tiene Spring).
+
+
+El segundo es bastante sencillo.Fijate que para proporcionar un Bean a Spring voy al archivo principal,anoto un método con @Bean y le hago retornar una instancia de esa clase que quiero almacenar:
+
+@SpringBootApplication
+public class UserserviceApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(UserserviceApplication.class, args);
+	}
+	
+	@Bean
+	PasswordEncoder passwordEncoder() {
+		return new BCryptPasswordEncoder();
+	}
+	
+	@Bean
+	CommandLineRunner run(UserService userService) {
+
+El primero es más complejo,lo que vamos a hacer es que la clase con el Service herede tanto de la interfaz anterior como de esta nueva interfaz UserDetailsService:
+@Service @RequiredArgsConstructor
+@Transactional @Slf4j
+public class UserServiceImpl implements UserService,UserDetailsService{
+
+Al ser una interfaz pedirá sobreescribir sus métodos(en este caso es sólo el método UserDetails loadUserByUsername(String name),aunque es bastante extenso:
+
+  @Override
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    User user = userRepo.findByUsername(username);
+    if(user == null){
+      log.error("User "+user+" not found inthe database");
+      throw new UsernameNotFoundException("User "+user+" not found inthe database");
+    }else{
+      log.info("User found in the database: {}", user);
+    }
+    /* tengo que devolver un UserDetails fijate */
+    /* para diferenciarlo de un User escribo el full qualifier name (new org.springframework.security.core.userdetails.User )*/
+    return new org.springframework.security.core.userdetails.User(user.getUsername(), user.getPassword(), authorities);
+  }
+
+Al final queda asi:
+ /* Tengo que recorrer cada usuario añadiendole los roles que tenga */
+ Collection<SimpleGrantedAuthority> authorities = new ArrayList<>();
+   
+  user.getRoles().forEach(role -> {
+    authorities.add(new SimpleGrantedAuthority(role.getName()));
+  });
+  /* fijate que el UserDetails necesitará los authorities */
+   return new org.springframework.security.core.userdetails.User(user.getUsername(), user.getPassword(), authorities);
+
+IMPORTANTE:fijate que la clase UserDetails luce asi:
+public User(String username, String password, Collection<? extends GrantedAuthority> authorities) ,con lo que siempre que lo sobreescriba tengo que pasarle un username,una password y una Collection<GrantedAuthority>.Y como SimpleGrantedAuthority hereda de GrantedAuthority nos vale lo anterior.Realmente son un par de cosas,pero no es muy complejo.
+
+NOTA:realizar esto crea el Bean de tipo UserDetailsService,con lo que ya tenemos la autorization completa hasta el punto que la dejamos.
+
+				M59 JWT - CONTINUING WITH SECURITY
+
+Debo entender las diferencias entre autenticación y autorization.Puedo estar autenticado,pero no autorizado para visitar cierto recurso.
+En Java la autorization se crea usando ACL(Access Control List)??.
+
+La primera vez que el usuario hace un SignUp o SignIn estamos mirando la authentication y le entregaremos un token si está autenticado,y una vez autenticados,cada vez que haga una petición,miramos por la autorización para ese recurso en el token que nos envie.Las diferencias son obvias,pues.
+
+Volvamos pues a este método en nuestra clase SecurityConfig,ya que se encargará de todo esto:
+  @Override
+  protected void configure(HttpSecurity http) throws Exception {
+    super.configure(http);
+  }
+
+NOTA: Spring por defecto usa un sistema de autenticación mediante una cookie.No queremos más el por defecto,ya que vamos a usar JWT.
+La forma de configurar esto es configurando la clase HttpSecurity que ya estoy viendo que viene por argumento,y más concretamente deshabilitando la CRSF:
+
+ @Override
+  protected void configure(HttpSecurity http) throws Exception {
+    /* deshabilito la CRSF para pasar de STATEFUL con cookies a  STATELESS con tokens(usaremos JWT) */
+    http.csrf().disable();
+    /* pasamos a stateless */ 
+    http.sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS);
+    
+    /* permito todo  */
+    http.authorizeRequests().anyRequest().permitAll();
+
+    /* aqui le pasaré mis filtros que debo crear */
+    http.addFilter(null);
+
+NOTA:fijate que SpringSecurity usa STATEFUL y cookies por defecto y queremos STATELESS con tokens.Trabajemos en los filtros que queramos implementar en un nuevo paquete 'filters'.
+
+El primer filtro será una clase que herede de UsernamePasswordAuthenticationFilter.Es una clase abstracta de la que puedo sobrescribir los métodos que quiera.De momento sobrescribiremos attemptAuthenticatio y succesfullAuthentication:
+
+public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFilter {
+  
+}
+
+NOTA: los pros sobreescriben también unsuccessfullAuthentication para ver que es lo que sucedio
+
+Y aparte también hay que instanciar la clase AuthenticationManager en su constructor(ver proyecto):
+
+@Slf4j 
+public class CustomAuthenticationFilter extends UsernamePasswordAuthenticationFilter {
+  private final AuthenticationManager authenticationManager;
+  public CustomAuthenticationFilter(AuthenticationManager authenticationManager) {
+    this.authenticationManager = authenticationManager;
+}
+
+Bien,desarrollemos el metodo attemptAuthentication:
+ @Override
+  public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
+      throws AuthenticationException {
+        /* accedo al username y password y los imprimo*/
+        String username = request.getParameter("username");
+        String password = request.getParameter("password");
+        log.info("Username is: {}", username);
+        log.info("Password is: {}", password);
+        /* creo un objeto Authentication con el username y password */
+        UsernamePasswordAuthenticationToken token = new UsernamePasswordAuthenticationToken(username, password);
+        /* llamo al authenticationManager para que me autentique */
+        return authenticationManager.authenticate(token);
+
+ 
+Volviendo a la clase SecurityConfig uso este nuevo filtro,sin embargo recuerda que esta clase tiene un constructor con un parámetro:
+
+ http.addFilter(new CustomAuthenticationFilter(authenticationManagerBean()));
+
+Para que inyecte esa instancia:
+  @Bean
+  @Override
+  public AuthenticationManager authenticationManagerBean() throws Exception {
+    return super.authenticationManagerBean();
+  }
+  
+Pero no hemos terminado con el filtro custom,nos falta entregar el token.
+
+						1H10 SECURITY WITH JWT
+
+Para crear el token es mejor usar alguna dependencia.Podemos buscar auth0 java maven,accedo a algun link al mavenRepository y me traigo el xml y lo pego en el pom.xml.
+Ahora ya puedo crear los dos tokens.Fijate que parece que hay varias aproximaciones posibles a todo esto:
+
+
+  /* cuando sea una authentication exitosa este método se ejecutará y es aqui donde debo mandarle el jwt */  
+  @Override
+  protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain,
+      Authentication authentication) throws IOException, ServletException {
+        /* necesito acceder al user que se acaba de logear exitosamente.User es de tipo UserDetails,ojo */
+        User user = (User)authentication.getPrincipal();  
+        
+        /* obviamente no debo pasar la semilla en duro */
+        Algorithm algorithm = Algorithm.HMAC256("secret".getBytes());      
+        
+        /* creo el refresh_jwt */
+        String access_token = JWT.create()
+        /* los subjects son Strings que crearan el payload,con el name nos vale para este ejemplo tan sencillo */
+            .withSubject(user.getUsername())
+            .withExpiresAt(new Date(System.currentTimeMillis() + 10*60*1000)) // 10 minutos
+            /* issuer es el emisor de este token,le pasaremos el dominio donde viene la request */
+            .withIssuer(request.getRequestURL().toString())
+            /* claims son una serie de reglas */
+            .withClaim("roles", user.getAuthorities().stream().map(GrantedAuthority::getAuthority).collect(Collectors.toList()))
+            .sign(algorithm);
+
+Y creo otro con más tiempo(30m para este).No necesita las reglas:
+            /* creo el refresh_jwt de 30m */
+        String refresh_token = JWT.create()
+        /* los subjects son Strings que crearan el payload,con el name nos vale para este ejemplo tan sencillo */
+            .withSubject(user.getUsername())
+            .withExpiresAt(new Date(System.currentTimeMillis() + 30*60*1000)) // 10 minutos
+            /* issuer es el emisor de este token,le pasaremos el dominio donde viene la request */
+            .withIssuer(request.getRequestURL().toString())
+            /* claims son una serie de reglas */
+            .sign(algorithm);
+
+Ahora ya tendré los tokens,asi que puedo enviarlos.
+  /* mando el jwt al response */
+  response.setHeader("acces_token", access_token);
+  response.setHeader("refresh_token", refresh_token);
+
+Por último codificamos la password al guardar,que áun no lo habiamos hecho:
+  @Override
+  public User saveUser(User user) {
+    log.info("Saving new user: " + user.getUsername());
+    user.setPassword(passwordEncoder.encode(user.getPassword()));
+
+Es hora de hacer una prueba.Por defecto puedo hacer una petición al /login y alli tengo un form para entrar.Dado que hemos creado unos usuarios con CommandLineRunner puedo usar uno de los tres y se me debería devolver en los headers los tokens(y asi sucede)
+
+NOTA:al haber usado request.setParameter tengo que mandar el body como x-www-form-urlencoded y agregar como key-values lo necesario(un username y password de la user-pool que he creado por consola en este caso).
+
+Puedo ir a jwt.io y ver el payload del token,confirmando que se crea con lo que quiero crearlo.Y asi es,lo creó con el username y los roles,y el issuer y el exp:
+{
+  "sub": "jonny",
+  "roles": [
+    "ROLE_ADMIN",
+    "ROLE_MANAGER",
+    "ROLE_USER"
+  ],
+  "iss": "http://localhost:8080/login",
+  "exp": 1644678055
+}
+Genial.Pero en vez de mandarlos por los headers vamos a mandar algo por el body.Para ello hay que crear un HashMap con los pares de clave valor que quiero devolver y parsearlo con la clase ObjectMapper().writeValue(response.getOutputStream(),value):
+
+ /* mando una reponse por el body */
+ Map<String, String> tokensInBody = new HashMap<>();
+ tokensInBody.put("access_token", access_token);
+ tokensInBody.put("refresh_token", refresh_token);
+ /* tengo que especificar el tipo de contenido */
+ response.setContentType("application/json");
+ new ObjectMapper().writeValue(response.getOutputStream(), tokensInBody);
+
+Bien,es hora de cambiar el acceso a nuestra app,queremos que todos puedan acceder al login por POSt ,y el resto sólo si tienen token
+
+IMPORANTE:puedo ver que Spring Security me proporciona ese /login viendo la clase UsernamePasswordAuthenticationFilter que debo heredar para hacer una Custom Auth:
+
+public class UsernamePasswordAuthenticationFilter extends AbstractAuthenticationProcessingFilter {
+  public static final String SPRING_SECURITY_FORM_USERNAME_KEY = "username";
+  public static final String SPRING_SECURITY_FORM_PASSWORD_KEY = "password";
+  private static final AntPathRequestMatcher DEFAULT_ANT_PATH_REQUEST_MATCHER = new AntPathRequestMatcher("/login", "POST"); <- aqui lo crean ellos.
+
+Si quiero puedo cambiar la ruta a /api/login,por ejemplo.Para ello en el configure de la autorización creo una instancia de mi clase para el Filter.Fijate que esto implica que tenga que pasar esta instancia y no una clase anónima al addFilter como estoy haciendo:
+
+ /* autorizacion */
+  @Override
+  protected void configure(HttpSecurity http) throws Exception {
+   CustomAuthenticationFilter customAuthenticationFilter = new CustomAuthenticationFilter(authenticationManagerBean());
+   customAuthenticationFilter.setFilterProcessesUrl("/api/login");
+    http.addFilter(customAuthenticationFilter); <- debe ser la misma instancia
+
+
+Al final hemos dejado los permisos asi:
+ /* todos pueden acceder al login,solo los ROLE_USER pueden ver /api/user y solo los ADMIN pueden crear por POST.Además,cada request debe estar autenticado */
+
+  http.authorizeRequests().antMatchers(HttpMethod.POST, "/login").permitAll();
+  http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/user/**").hasAnyAuthority("ROLE_USER");
+  http.authorizeRequests().antMatchers(HttpMethod.POST,"/api/user/save/**").hasAnyAuthority("ROLE_ADMIN");
+  http.authorizeRequests().anyRequest().authenticated();
+
+			1h33m PARTE DOS RECEPCIÓN DEL TOKEN POR EL SERVER
+
+Bien,ya soy capaz de mandar el token con el payload al cliente.Ahora me toca ser capaz de recibirlo y comprobar su validez
+La forma de realizar esto es creando un AuthorizationFilter,el cual actuará como middleware,interceptando cada petición y procesandola,determinando si el usuario tiene acceso a ese recurso o no.
+
+Dado que es otro filtro voy a usar el mismo package 'filters'.Si la clase anterior se llamó CustomAuthenticationFilter esta se llamará CustomAuthorizationFilter,pues ahora miramos por la autorización y no por la autenticación.
+
+Todo irá en ese método doFilterInternal,que se ejecuta una vez por request,obviamente:
+
+public class CustomAuthorizationFilter extends OncePerRequestFilter {
+  @Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+    
+  }
+  
+}
+Al final el filtro quedó así:
+@Override
+  protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+      throws ServletException, IOException {
+
+    /* si estamos en el login no quiero que procese nada el middleware */
+    if (request.getServletPath().equals("/api/login")) {
+      filterChain.doFilter(request, response);
+      return;
+    } else {
+      String authorizationHeader = request.getHeader("Authorization");
+      /* compruebo que no sea null y que empiece por Bearer */
+      if (authorizationHeader != null && authorizationHeader.startsWith("Bearer ")) {
+        try {
+          String token = authorizationHeader.substring("Bearer ".length()); // podia poner 7 también
+          /* la semilla obviamente debe ser la misma al decodificar */
+          Algorithm algorithm = Algorithm.HMAC512("secret".getBytes());
+          /* decodifico el token */
+          JWTVerifier verifier = JWT.require(algorithm).build();
+          /* verifico el token */
+          DecodedJWT decodedJWT = verifier.verify(token);
+          /* obtengo el username del token */
+          String username = decodedJWT.getSubject();
+          /* obtengo los roles del token */
+          String[] roles = decodedJWT.getClaim("roles").asArray(String.class);
+          Collection<SimpleGrantedAuthority> authorities = Arrays.stream(roles).map(SimpleGrantedAuthority::new)
+              .collect(Collectors.toList());
+          authorities.stream().forEach(e -> log.info("Authority is: {}", e.getAuthority()));
+          /* creo un objeto Authentication con el username y password */
+          UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username,
+              null, authorities);
+          /* importante,hay que pasarlo a Spring Security */
+          SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+          filterChain.doFilter(request, response); // similar a next()
+        } catch (Exception e) {
+          log.error("Error logging in: {}", e.getMessage());
+          response.setHeader("error", e.getMessage());
+          /* mando una reponse por el body */
+          Map<String, String> errorInBody = new HashMap<>();
+          errorInBody.put("ok", "false");
+          errorInBody.put("error", e.getMessage());
+          /* tengo que especificar el tipo de contenido */
+          response.setContentType("application/json");
+          new ObjectMapper().writeValue(response.getOutputStream(), errorInBody);
+        }
+      } else {
+        filterChain.doFilter(request, response); // similar a next()
+      }
+    }
+  }
+
+Añado el filtro,pero fijate que usaré addFilterBefore para que sea un filtro antes de cada petición(obviamente tendré addFilterAfter):
+
+  /* aqui le pasaré mis filtros que debo crear */
+    http.addFilter(customAuthenticationFilter);
+    http.addFilterBefore(new CustomAuthorizationFilter(), UsernamePasswordAuthenticationFilter.class);
+    
+Bien,es hora de probar.Puedo tratar de acceder a /api/users sin autenticarme y no debería de poder.Despues debo crear el Header Authorization y usar "Bearer {JWT}".Puedo probar con tokens incorrectos y tampoco debo poder acceder.
+Por último pruebo con un token correcto.Todo OK.jose luiz
+Fijate que debería de hacer el proyecto yo de nuevo,lo haré mañana.
+Recuerda que con la dependencia SpringBoot DevTools se refresca sólo el Tomcat.
+
+								REFRESH TOKEN
+
+Nos falta trabajar un poco en el refresh token.Vamos a crear un endpoint donde se renueve ese refresh token.
+
+IMPORTANTE: igual que en Node request y response son objetos globales lo mismo sucede en Spring,puedo usar las clases HttpServletResponse y HttpServletRequest donde quiera.Asi que voy a llamarlas simplemente:
+
+ @GetMapping("/role/addtouser")
+ public void refreshToken(HttpServletRequest request, HttpServletResponse response) {
+  ... logica aqui
+  }
+
+Fijate como tengo acceso a la request y response en cualquier parte de mi proyecto.
+
+NOTA: parece que escribir en las cabeceras tiran una IOException:
+
+ response.setHeader("error", e.getMessage()); <- luego obligará a esto
+
+ @GetMapping("/token/refresh")
+ public void refreshToken(HttpServletRequest request, HttpServletResponse response) throws IOException
+
+Falta permitir ese path en la aplicación.Ojo,que la ruta debe ser exacta:
+ http.authorizeRequests().antMatchers(HttpMethod.GET,"/api/token/refresh").permitAll(); <- nada de /api/token/refresh?** | refresh/**.
+Repetir todo al menos una vez para memorizarlo.
+
+					SPRING DATA JPA	INTRO BY AMIGOSCODE
+
+Source: https://www.youtube.com/watch?v=8SGI_XS5OPw&list=PLwvrYc43l1MzeA2bBYQhCWr2gvWLs9A7S&index=2
+
+Spring Data JSA es una abstracción sobre la JPA API(Java Persistence API) y Hibernate.Sirve para acceder,persistir y manejar datos entre objetos Java.
+Hibernate es un ORM que mapeará una Clase con un registro.
+
+Su integración con SpringBoot es muy grande,pudiendose configurar muy rápido y con facilidad.Sus annotations suelen venir pues de javax.persistence(como @Entitiy,@Id @Column @GeneratedValue),ya que acabamos de decir que Spring Data JPA usa la Java Persistence API.
+
+NOTA;fijate que puedo usar nullable=false cuando quiera un campo que admita nulls o updatable=false si quiero que no se pueda cambiar su valor.TAmbién puedo usar unique para que cada valor deba ser diferente.
+
+NOTA: fijate que JPARepository permite acceder a esta interfaz JPA,y que JPARepository hereda de PagingAndSortingRepository y de CrudRepository,asi que también puedo implementar paginación de forma fácil en un backend Java.
+
+Y dentro de @Table puedo darle nombre a las constraints:
+@Table( name="student",uniqueConstraints={ @UniqueConstraint(name="student_email",column="email")
+public class Student{...}
+
+POSTGRES shortcuts:
+\l <- list databases
+\c <- list current user and database connected
+\dt <- list tables
+\du <- display user
+\d+ <table> <- list columns

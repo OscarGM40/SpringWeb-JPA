@@ -1,0 +1,482 @@
+		COMPLETE USER LOGIN AND REGISTRATION BACKEND WITH EMAIL VERIFICATION
+
+Source: https://www.youtube.com/watch?v=QwQuro7ekvc&ab_channel=Amigoscode
+
+Usaremos PostGreSQL como Db,bcrypt para encriptar la password.Empecemos.Voy a Spring Initizalzr y eligo como dependencias: lombok,spring web,spring security,spring data jpa,postgresql driver y java mail sender.
+
+Fijate que el driver cambia al usar PostGreSQL y que ya tienen una dependencia para envio de emails.
+
+NOTA:fijate que Spring tiene dependencias para WebSockets,para MOngoDB,ApacheCassandra,CouchDB,investigar que es Batch también.
+
+IMPORANTE:fijate que puedo generar un link para compartir con el starter-project
+(https://start.spring.io/#!type=maven-project&language=java&platformVersion=2.6.3&packaging=jar&jvmVersion=11&groupId=com.example&artifactId=demo&name=demo&description=Demo%20project%20for%20Spring%20Boot&packageName=com.example.demo&dependencies=lombok,web,security,postgresql,data-jpa,mail)
+Increible
+
+Fijate,estas dos dependencias son para testing:
+	<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-test</artifactId>
+		<scope>test</scope>
+	</dependency>
+	<dependency>
+		<groupId>org.springframework.security</groupId>
+		<artifactId>spring-security-test</artifactId>
+		<scope>test</scope>
+	
+Sigo con la conexión a PostGreSQL,usaré mi contenedor.Recuerda |d+ table_name para ver las columnas.Aparte hay que cambiar el driver,el dialecto y la cadena de conexión,lógicamente:
+
+spring.datasource.driver-class-name=org.postgresql.Driver
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+
+NOTA:fijate que él ha renombrado el application.properties a application.yaml y usado sintaxis yaml,claro.¿Hay algún beneficio en esto?.
+
+						EMPEZANDO CON LA LÓGICA
+
+Fijate que lo primero que ha hecho ha sido crear una clase que va a implementar la interfaz UserDetails ,y además necesitaremos una enum para la propiedad que albergará los roles:
+
+public class AppUser implements UserDetails {
+
+  private Long id;
+  private String name;
+  private String username;
+  private String email;
+  private String password;
+
+  @Enumerated(EnumType.STRING)
+  private AppUserRole appUserRole; <- AppUserRole será una enum,recuerda que una enum debe ser anotada con su tipo de dato en Spring(EnumType.XXX)
+
+package com.example.demo.appuser;
+
+public enum AppUserRole {
+  USER, ADMIN
+}
+También necesitare un par de propiedades más,pues vamos a sobreescribir todas las de UserDetailsService:
+private Boolean locked;
+private Boolean enabled;
+
+IMPORTANTE:para acceder al nombre de esa enum Java ya me proporciona el método getter enum.name() en el propio lenguaje:
+  SimpleGrantedAuthority authority = new SimpleGrantedAuthority(appUserRole.name()); <- name es buil-in method
+
+Con todo esto retorno una lista inmutable:
+return Collections.singletonList(authority);
+Sobreescribo los demás métodos de la interfaz UserDetails:
+
+  @Override
+  public String getPassword() {
+    return password;
+  }
+
+  @Override
+  public String getUsername() {
+    return username;
+  }
+
+  @Override
+  public boolean isAccountNonExpired() {
+    return true;
+  }
+
+  @Override
+  public boolean isAccountNonLocked() {
+    return !locked;
+  }
+
+  @Override
+  public boolean isCredentialsNonExpired() {
+    return true;
+  }
+
+  @Override
+  public boolean isEnabled() {
+    return enabled;
+  }
+
+IMPORTANTE:la clase realmente va aser anotada con @Entity,y fijate como genera el id(es porque es postgresql??).Necesitó del decorador @SequenceGenerator:
+ @Id 
+  @SequenceGenerator(
+    name="student_sequence",
+    sequenceName = "student_sequence",
+    allocationSize = 1
+  )
+  @GeneratedValue(
+    strategy= GenerationType.SEQUENCE,
+    generator= "student_sequence"
+  )
+  private Long id;
+
+Bien,creo otra clase y esta vez implementará la interfaz UserDetailsService.Recuerda que está interfaz explica a Spring cómo debe de cargar un usuario,mientras que la anterior especific cómo luce un usuario.
+
+public class AppUserService implements UserDetailsService {
+
+  @Override
+  public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
+    return null;
+  }
+  
+}
+
+* En esta aplicación vamos a cargar por email,asi que necesitamos antes que nada una forma de cargar users por email.Asi que creo una interfaz de esta forma:
+
+import org.springframework.transaction.annotation.Transactional;
+
+@Repository
+@Transactional(readOnly = true)
+public interface StudentRepository {
+  Optional<AppUser> findByEmail(String email);
+}
+
+Bien,este método va a buscar por el email(debo entender porqué).Asi que ya puedo llamarlo y devolverle a la implementación del loadUserByUsername de la interfaz UserDetailsService lo correcto:
+
+@Service
+@AllArgsConstructor
+public class AppUserService implements UserDetailsService {
+
+  private final AppUserRepository appUserRepository;
+  private final static String EMAIL_NOT_FOUND="User with this email (%s) not found in our database.Consider registering first";
+  
+  @Override
+  public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
+    return appUserRepository
+      .findByEmail(email)
+      .orElseThrow(() -> new UsernameNotFoundException(
+        String.format(EMAIL_NOT_FOUND, email)));
+  }
+
+
+						CONFIGURATING SECURITY
+
+Esta vez vamos a crear la seguridad distribuida un tanto diferente.No es importante.Simplemente desactivamos la seguridad para el register:
+
+@Configuration  
+@EnableWebSecurity
+@AllArgsConstructor
+public class WebSecurityConfig extends WebSecurityConfigurerAdapter {@Override
+
+  protected void configure(HttpSecurity http) throws Exception {
+    /* desactivo su seguridad temporalmente*/
+    http
+      .csrf().disable()
+      .authorizeRequests()
+      .antMatchers( HttpMethod.POST,"/api/v*/registration/**")
+      .permitAll()
+      .anyRequest()
+      .authenticated().and()
+      .formLogin();
+  }
+
+IMPORTANTE: fijate como vamos a configurar el AuthenticationManager para la autorización,creando un Bean para la clase DaoAuthenticationProvider,la cual proveerá el codificador y la clase userDetailsService.Desde luego hay varias formas,si:
+
+@Override
+protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+  auth.authenticationProvider(daoAuthenticationProvider());
+}
+
+@Bean
+public DaoAuthenticationProvider daoAuthenticationProvider(){
+  DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
+  provider.setPasswordEncoder(bCryptPasswordEncoder);
+  provider.setUserDetailsService(appUserService);
+  return provider;
+}
+
+IMPORTANTE:no encontraba el Bean de AppUserRepository porque la interfaz necesitaba heredar de la abstracta JpaRepository,no por otra cosa.
+Y lo mismo para RegistrationService.
+
+/* fijate que tuvimos que anotarla con configuration */
+@Configuration
+public class PasswordEncoder {
+
+  /* fijate que @Bean es sólo para el interior de las clases,en este caso un método */
+  @Bean
+  public BCryptPasswordEncoder bCryptPasswordEncoder() {
+    return new BCryptPasswordEncoder();
+  }
+    
+}
+Importante:fijate que este proyecto es un poco más complejo,pero al loadUserByUsername lo llamé en AppUserService,que con ayuda del repo que extiende de Jpa me lo carga por email.Son varias cosas pero no es complejo.
+
+					LOGICA PARA REGISTRAR UN USUARIO
+
+Playing around: jugando con ello,jugando por ahí,...
+Bien,vamos a crearnos una clase helper para checkear el campo email.Será una clase que implemente la interfaz Predicate<T> y desarrolle su método test(String t):boolean.
+Fijate que T será el tipo de lo que quiero chequear,en este caso será el valor que traiga el <input type=email> asi que será Predicate<String>:
+
+@Service
+public class EmailValidator implements Predicate<String> {
+  @Override
+  public boolean test(String){
+    return t.contains("@");
+  }
+}
+Obviamente irá una regexp aqui más complicada.
+Bien,asinto fijate que \x es una opción básica para la consola de PostGreSQL.Activa o desactiva el expanded display.
+NOTA:fijate que tuvo algún que otro fallo.Nos olvidamos poner valores por defecto para locked y enabled:
+
+ private Boolean locked=false;
+ private Boolean enabled=false;
+
+Solamente activaremos la cuenta tras el email de confirmación,obviamente.Fijate que Java tiene un sistema de registro bastante robusto por defecto.
+
+Bien,ya es hora de registrar un User,simplemente el controlador que llame a un método de un Service que lo guarde con ayuda del reposiorio:
+ @PostMapping
+  public String register(@RequestBody RegistrationRequest request) {
+    return registrationService.register(request);
+  }
+
+Ese register llama a éste,que está en un @Service.No sé porque creó dos,con uno quizas hubiera sido mejor??:
+
+  public String register(RegistrationRequest request) {
+    boolean isValidEmail = emailValidator.test(request.getEmail());
+    if (!isValidEmail) {
+      throw new IllegalStateException("Invalid email address");
+    }
+    return appUserService.signUpUser(
+      new AppUser(
+        request.getFirstName(),
+        request.getLastName(),
+        request.getEmail(),
+        request.getPassword(), 
+        AppUserRole.USER
+        )
+    );
+  }
+
+Sea como sea,ese signUpUser del otro @Service AppUserService luce así:
+
+  public String signUpUser(AppUser appUser) {
+     boolean userExists = appUserRepository.findByEmail(appUser.getEmail()).isPresent();
+    
+    if (userExists) {
+      throw new IllegalStateException("User with this email (" + appUser.getEmail() + ") already exists");
+    }
+    String encodedPass = bCryptPasswordEncoder.encode(appUser.getPassword());    
+    appUser.setPassword(encodedPass);
+    /* recuerda guardarlo a la DB mediante el repository */
+    appUserRepository.save(appUser);
+    // TODO : send confirmation token
+    return "User registered successfully";
+  }
+
+Fijate que hay que comprobar la uniqueness del email,encriptar la password y guardar el user.En este punto ya puedo guardar un User,e incluso ir a localhost:8080/login y tratar de hacer signIn,pero no podré porque la cuenta está disabled.Fijate es por querer implementar esta opción por lo que tuvimos que imlementar UserDetails y sobreescribir todos sus métodos,pero ahora ya veo los beneficios.
+
+				IMPLEMENTING VERIFICATION LINK AND SENDING EMAILS
+
+Vamos a crear una Entity para el token,ya que tiene bastantes features.Fijate en el uso de LocalDateTime para el issuedAt,expiresAt o confirmedAt:
+
+@Entity @Getter @Setter @NoArgsConstructor
+public class ConfirmationToken {
+
+  @Id
+  @SequenceGenerator(name = "confirmation_token_sequence", sequenceName = "confirmation_token_sequence", allocationSize = 1)
+  @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "confirmation_token_sequence")
+  private Long id;
+  
+ @Column(nullable=false)
+  private String token;
+
+  @Column(nullable=false)
+  private LocalDateTime issuedAt;
+
+  @Column(nullable=false)
+  private LocalDateTime expiresAt;
+  private LocalDateTime confirmedAt;
+
+  public ConfirmationToken(String token,
+      LocalDateTime issuedAt,
+      LocalDateTime expiresAt,
+      LocalDateTime confirmedAt) {
+    this.token = token;
+    this.issuedAt = issuedAt;
+    this.expiresAt = expiresAt;
+    this.confirmedAt = confirmedAt;
+  }
+Además,casi todas las columnas no pueden ser nulas por motivos obvios.
+
+IMPORTANTE: recuerda que puedo tener tres tipos de unión.Cuando sea @ManyToMany no hace falta especificar donde se unen las tablas,pues se creara una tercera tabla con los IDs.Pero fijate que la relación entre tokens y usuarios es muchos a uno,pues un usuario puede tener muchos tokens pero un token sólo tendrá un usuario.
+
+Este tipo de relación 1 a m no crea una tercera tabla y me obliga a usar las anotaciones @ManyToOne y @JoinColumn(name="FK_NAME"):
+
+@ManyToOne(fetch = FetchType.LAZY)
+  @JoinColumn(nullable=false, name = "app_user_id") <- nullable es obligatorio??
+  private AppUser appUser;
+
+NOTA: recuerda trabajar con Optional<T> si llega el caso:
+
+@Repository
+public interface ConfirmationTokenRepository extends JpaRepository<ConfirmationToken, Long> {
+  Optional<ConfirmationToken> findByToken(String token);
+}
+
+Fijate como va a crear un token con un simple string random( y como la libreria UUID ya forma parte del core de java):
+
+  String token = UUID.randomUUID().toString();
+
+    ConfirmationToken confirmationToken = new ConfirmationToken(
+      token,
+      LocalDateTime.now(),
+      LocalDateTime.now().plusMinutes(15),
+      null,
+      appUser);
+
+   confirmationTokenService.saveConfirmationToken(confirmationToken);
+
+    return token;
+
+Lo guardo en la DB y lo devuelvo.Puedo hacer alguna comprobación.Ahora necesito una forma de comprobar y validar el token.
+
+Fijate como hizo una query con HQL:
+ 
+   @Transactional
+   @Modifying
+   @Query("UPDATE ConfirmationToken c " +
+            "SET c.confirmedAt = ?2 " +
+            "WHERE c.token = ?1")
+    int updateConfirmedAt(String token, LocalDateTime confirmedAt);
+?2 y ?1 son los argumentos,según su orden.Genial.
+
+Fijate en esta otra:
+ @Transactional
+  @Modifying
+  @Query("UPDATE AppUser a " + "SET a.enabled = TRUE WHERE a.email = ?1")
+    int enableAppUser(String email);
+UPDATE table t set t.field <- es sql puro no? no es hql.
+
+Bien,al final tras visitar http://localhost:8080/api/v1/registration/confirm?token=89b3639b-ba6e-477b-a9f4-c58b2e8e37c9 con un token valido que coincide con el id hara se update ConfirmationToken c SET c.confirmedAt = ?2 where c.token = ?1.Puedo ver en la db que cambia enabled a true en el user y confirmedAt en la otra tabla
+Incluso podré ir a localhost:8080/login y logearme ya.
+
+		1H33M IMPLEMENTING EMAIL SENDING WITH JAVA SEND EMAIL LIBRARY
+
+Para mandar emails usaré la clase JavaMailSender.Fijate que viene de aqui:
+import org.springframework.mail.javamail.JavaMailSender;
+
+@Service
+@AllArgsConstructor
+public class EmailService implements EmailSender {
+
+  private final static Logger LOGGER = LoggerFactory.getLogger(EmailService.class);
+  private final JavaMailSender javaMailSender;
+
+  @Override
+  @Async
+  public void send(String to, String email) {
+    try {
+      MimeMessage mimeMessage = javaMailSender.createMimeMessage();
+      MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
+      /* true si quiero que sea un HTML */
+      helper.setText(email,true);
+      helper.setTo(to);
+      helper.setSubject("Confirmación de registro");
+      helper.setFrom("hello@amigoscode.com");
+      javaMailSender.send(mimeMessage);
+    } catch (MessagingException e) {
+      LOGGER.error("Failed sending email", e);
+      throw new IllegalStateException("Failed to send email");
+    }
+  }
+
+Puedo ver que es bastante sencillo.Al loro con la annotation @Async.
+LLamaremos a este método en el register:
+  public String register(RegistrationRequest request) {
+    boolean isValidEmail = emailValidator.test(request.getEmail());
+    if (!isValidEmail) {
+      throw new IllegalStateException("Invalid email address");
+    }
+    String token = appUserService.signUpUser(
+      new AppUser(
+        request.getFirstName(),
+        request.getLastName(),
+        request.getEmail(),
+        request.getPassword(), 
+        AppUserRole.USER
+        )
+    );
+    String link = "http://localhost:8080/api/v1/registration/confirm?token=" + token;
+    emailSender.send(
+      request.getEmail(),
+       buildEmail(request.getFirstName(),link));
+    return token;    
+
+Bien,ya tenemos todo.Solo falta un email server para testear este envio.Hay uno muy bueno escrito en Node.Se llama 'maildev'
+NOTA: MailDev es una simple forma de testear los emails generados por tu proyecto durante la fase de desarrollo con una interfaz web sencilla que corre en tu navegador.Esta escrito en NodeJs
+
+Instalar(npm o Docker Image):
+npm install -g maildev 
+>maildev <- ejecutar
+ó con Docker
+docker run -p 1080:1080 -p 1025:1025 maildev/maildev
+
+Ver más en su repo: https://github.com/maildev/maildev
+MailDev webapp running at http://0.0.0.0:1080
+MailDev SMTP Server running at 0.0.0.0:1025
+Como puedo ver necesita el 1025 para el protocolo SMTP y el 1080 para la Interfaz
+
+IMPORTANTE: ahora hay que configurar mi aplicación,en este caso el application.properties para que apunte aqui,a este servidor fake local!:
+
+# configure email sending to pinpoint mi local email server
+# username and password doesn't matter
+spring.mail.host=localhost
+spring.mail.port=1025
+spring.mail.username= hello
+spring.mail.password= hello
+
+spring.mail.properties.mail.smtp.ssl.trust=*
+spring.mail.properties.mail.smtp.auth=true
+spring.mail.properties.mail.smtp.starttls.enable=true
+spring.mail.properties.mail.smtp.connectiontimeout=50000
+spring.mail.properties.mail.smtp.timeout=3000
+spring.mail.properties.mail.smtp.writetimeout=5000
+
+Bien,hago una prueba y veo que activo al usuario,pudiendo hacer login.Y si hago click en el enlace de nuevo me da un error 500.Genial:
+There was an unexpected error (type=Internal Server Error, status=500).
+email already confirmed
+
+Incluso puedo hacer la prueba haciendo que expire el token:
+update confirmation_token set expires_at= now() - interval '1 day' where id=2;
+
+Si trato de hacer click en un token expirado para activar mi cuenta veré otro error 500,pero el error es otro:
+There was an unexpected error (type=Internal Server Error, status=500).
+token expired
+
+NOTA: quien gestiona esto?Lo hicimos nosotros?Confirmo,asi es son nuestras IllegalStateExceptions:
+
+   if (userExists) {
+      throw new IllegalStateException("User with this email (" + appUser.getEmail() + ") already exists");
+    }
+
+Resumen:tengo dos controladores,uno registra al usuario,sin activarlo:
+
+ @PostMapping
+  public String register(@RequestBody RegistrationRequest request) {
+    return registrationService.register(request);
+  }
+
+  @GetMapping(value="confirm")
+  public String confirm(@RequestParam("token") String token) {
+    log.info("Confirming token {}", token);
+    return registrationService.confirmToken(token);
+    // return "confirming";
+  }
+
+El otro es donde apuntará el link que se envia al correo.
+Ese registrationService.register registra al usuario y le manda un mail:
+
+  public String register(RegistrationRequest request) {
+    boolean isValidEmail = emailValidator.test(request.getEmail());
+    if (!isValidEmail) {
+      throw new IllegalStateException("Invalid email address");
+    }
+    String token = appUserService.signUpUser(
+      new AppUser(
+        request.getFirstName(),
+        request.getLastName(),
+        request.getEmail(),
+        request.getPassword(), 
+        AppUserRole.USER
+        )
+    );
+    String link = "http://localhost:8080/api/v1/registration/confirm?token=" + token;
+    emailSender.send(
+      request.getEmail(),
+       buildEmail(request.getFirstName(),link));
+    return token;    
+  }
+Al registrarse se genera un token,sin fecha de confirmación y con una validez concreta,se envia un email y si el usuario confirma ese token dentro de ese tiempo de vigencia se activa.La tarea no sería muy dificil,sería mirar el token y sus propiedades,etc...
