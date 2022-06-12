@@ -1,10 +1,10 @@
-package images.s3imagesupload;
+package io.getarrays.server;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 
 @SpringBootTest
-class S3ImagesUploadApplicationTests {
+class ServerApplicationTests {
 
 	@Test
 	void contextLoads() {
