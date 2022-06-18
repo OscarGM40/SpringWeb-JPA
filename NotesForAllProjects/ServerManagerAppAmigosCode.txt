@@ -278,4 +278,129 @@ Sin embargo,me falta la conexión a la BBDD.
 
 						CONEXION CON LA DB 59M
 
+Simplemente me conecto al contenedor con el MySQL y creo otra DB.Compruebo en PostMan que pueda traer todos los servers,uno por Id,guardar,hacer Ping u obtener la imagen.Tras esto ya podemos ir al frontend usando Angular.
 
+
+Creo una app con ng new(usaremos una aproximación reactiva).Aunque sea más difícil veré los beneficios de ello.Por ejemplo,la forma típica de hacer peticiones sería esta:
+
+  getServers(): Observable<CustomResponse> {
+    return this.http.get<CustomResponse>('/api/servers');
+  }
+
+Esto es una aproximación por procedimientos(procedural approach).Fijate como ha tipado el this.http poniendo delante <Observable<any>>this.http <- assertion type de la otra forma.Muy pro.
+
+  // forma reactiva
+  servers$ = <Observable<CustomResponse>>this.http.get<CustomResponse>(`${this.apiUrl}/servers/list`).pipe(
+    tap<CustomResponse>(console.log),
+      map<CustomResponse, any>((data) => {
+        if (data.data.server) adaptServerDTO(data.data.server!);
+        if (data.data.servers)
+          data.data.servers.forEach((server) => adaptServerDTO(server));
+        return data;
+      }),
+      catchError(this.handleError)
+    );
+    
+
+  handleError(err: any): Observable<never> {
+    return throwError('Error en el servicio');
+  }
+
+NOTA: fijate que const y readonly son lo mismo,sólo que const es para variables y readonly para propiedades/miembros de clase,pero debería usarlos siempre que pueda.
+
+Types Partial<T>, Omit<T,properties> y Pick<T,properties>: dado un tipo T puedo omitir o coger propiedades de ese tipo con estos types.También puedo hacer una versión de un tipo T con Partial<T>(de nuevo es un type).
+
+Bien,volviendo a la App,para guardar hago lo mismo,sólo que esta vez con un argumento:
+  // guardar reactivamente un server 
+  save$ = (server: ServerModel) => <Observable<CustomResponse>>this.http.post<CustomResponse>(`${this.apiUrl}/servers/save`, server).pipe(
+    tap<CustomResponse>(console.log),
+      map<CustomResponse, any>((data) => {
+        if (data.data.server) adaptServerDTO(data.data.server!);
+        if (data.data.servers)
+          data.data.servers.forEach((server) => adaptServerDTO(server));
+        return data;
+      }),
+      catchError(this.handleError)
+    );
+
+IMPORTANTE: no debo tipar el error como any nunca(y menos en una empresa).El error será de tipo HttpErrorResponse ya que es una petición:
+ 
+ private handleError(err: HttpErrorResponse): Observable<never> {
+    console.log(err);
+    // fijate que si tipo el error como HttpErrorResponse tengo acceso al message y al statusCode,algo que necesitaré en un ambiente empresarial
+    return throwError(`${err.status} - ${err.message}`);
+  }
+Si lo tipo asi tengo acceso al StatusCode devuelto y al message.
+
+NOTA: fijate que el autor insiste en no poner strict a false en el tsconfig.json(ya que ese strict es un conjunto de reglas como noImplicitAny,alwaysStrict,strictFunctionTypes,etc).En realidad es un conjunto de reglas,que realmente no querré poner a false nunca.
+
+IMPORTANTE: fijate como va a definir un Observable en el OnInit del comienzo de la App(en el App.component.ts) y asi tener la data lo primero de todo.Observa como usaré el pipe async para llamarlo(muy pro):
+
+export class AppComponent implements OnInit {
+  // creo una propiedad de tipo observable<AppState<T>>
+  appState$!: Observable<AppState<CustomResponse>>;
+  
+  constructor(private serverService: ServerService) {}
+
+  ngOnInit() {
+    // llamo al servicio para obtener el estado de la aplicación(los servers)
+    this.appState$ = this.serverService.servers$
+    .pipe(
+      map<CustomResponse,AppState<CustomResponse>>(response => ({
+          dataState: DataState.LOADED_STATE,
+          appData: response,
+        })
+      ),
+      startWith<AppState<CustomResponse>>({ 
+        dataState: DataState.LOADING_STATE,
+      }),
+      catchError(error => {
+        return of({
+          dataState: DataState.ERROR_STATE,
+          error: error // puede resumirse pues son iguales
+        });
+      })
+    );
+  }
+}
+
+En la template me quedará usar el pipe | async appState$.Importante.
+
+					ERROR DE CORS
+
+En este punto ya quiero dejar corriendo el proceso del back,pero voy a tener un problema de CORS.Para solucionarlo en el archivo principal(donde tengo el CommandLineRunner) pego este código:
+
+	@Bean
+	public CorsFilter corsFilter() {
+		UrlBasedCorsConfigurationSource urlBasedCorsConfigurationSource = new UrlBasedCorsConfigurationSource();
+		CorsConfiguration corsConfiguration = new CorsConfiguration(); 
+		corsConfiguration.setAllowCredentials(true);
+		corsConfiguration.setAllowedOrigins(Arrays.asList("http://localhost:4200","http://localhost:3000"));
+		corsConfiguration.setAllowedHeaders(Arrays.asList("Origin","Access-Control-Allow-Origin","Content-Type","Accept","Jwt-Token","Authorization","Origin, Accept","X-Requested-With","Access-Control-Request-Method","Access-Control-Request-Headers"));
+		corsConfiguration.setExposedHeaders(Arrays.asList("Origin","Content-Type","Accept","Jwt-Token","Authorization","Access-Control-Allow-Origin","Access-Control-Allow-Credentials","Filename"));
+		corsConfiguration.setAllowedMethods(Arrays.asList("GET","POST","PUT","DELETE","OPTIONS","PATCH"));
+		urlBasedCorsConfigurationSource.registerCorsConfiguration("/**", corsConfiguration);
+		return new CorsFilter(urlBasedCorsConfigurationSource);
+	}
+
+Fijate que abrí el localhost:3000 y el 4200 para cuando use React(obviamente cambiará cuando sea un dominio).Ahora si,ya puedo comunicar el front con el backend. Pero antes hago la petición al Observable en la template.De momento que sea algo tan simple como esto(fijate en el uso del pipe json):
+
+<div>{{ appState$ | async | json }}</div>
+
+Simplemente visito localhost:4200 y debería ver el getAllServers.Incluso veo el estado general de la App durante un segundo como LOADING_STATE.Para poder ver mejor esto puedo ir al backend y poner un Timeout al controlador del getServers:
+
+ @GetMapping("/list")
+  public ResponseEntity<Response> getServers() throws InterruptedException {
+    TimeUnit.SECONDS.sleep(3);
+    return ResponseEntity.ok(
+        Response.builder()
+            .timeStamp(LocalDateTime.now())
+            .data(Map.of("servers", serverService.list(10)))
+            .message("Servers retrieved")
+            .status(HttpStatus.OK)
+            .statusCode(HttpStatus.OK.value())
+            .build());
+  }
+Lo puedo hacer con TimeUnit.SECONDS.sleep(3) <- dado que elegí SECONDS serán 3 seconds.Fijate que lanza excepción.En cuanto a la UI usó Bootstrap.Apenas son un par de tablas.
+TIP: puedo ver que usa varios <ng-container>.Esta tag es como un <React.Fragment>no indica nada,es un simple <div> en bloque,obviamente,pero me sirve para separar el código semánticamente | mejorar legibilidad del HTML.
+2h

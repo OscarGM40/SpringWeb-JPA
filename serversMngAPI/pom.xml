@@ -9,9 +9,9 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>io.getarrays</groupId>
-	<artifactId>server</artifactId>
+	<artifactId>serversMngAPI</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>server</name>
+	<name>serversMngAPI</name>
 	<description>Server Manager Application</description>
 	<properties>
 		<java.version>11</java.version>

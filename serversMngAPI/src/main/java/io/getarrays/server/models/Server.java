@@ -18,7 +18,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class Server {
 
-  @Id @GeneratedValue(strategy = GenerationType.AUTO)
+  @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+  @Column(name = "id", nullable = false)
   private Long id;
   @Column(unique = true) // no queremos la misma IP dos veces
   @NotEmpty(message = "Ip Address cannot be empty or null")

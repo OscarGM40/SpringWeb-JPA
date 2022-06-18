@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 import javax.validation.Valid;
 
@@ -34,7 +35,8 @@ public class ServerController {
   private final ServerServiceImpl serverService;
 
   @GetMapping("/list")
-  public ResponseEntity<Response> getServers() {
+  public ResponseEntity<Response> getServers() throws InterruptedException {
+    TimeUnit.SECONDS.sleep(3);
     return ResponseEntity.ok(
         Response.builder()
             .timeStamp(LocalDateTime.now())
@@ -59,11 +61,11 @@ public class ServerController {
   }
 
   @PostMapping("/save")
-  public ResponseEntity<Response> saveServer(@RequestBody @Valid Server  server) {
+  public ResponseEntity<Response> saveServer(@RequestBody @Valid Server server) {
     return ResponseEntity.ok(
         Response.builder()
             .timeStamp(LocalDateTime.now())
-            .data(Map.of("server", server))
+            .data(Map.of("server", serverService.create(server)))
             .message("Server created")
             .status(HttpStatus.CREATED) // 201
             .statusCode(HttpStatus.CREATED.value())
@@ -97,7 +99,7 @@ public class ServerController {
 
   @GetMapping(path = "/image/{fileName}",produces = MediaType.IMAGE_PNG_VALUE)
   public byte[] getServerImage(@PathVariable("fileName") String fileName) throws IOException {
-    return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/Downloads/" + fileName));
+    return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/Descargas/" + fileName));
   }
 
 }
