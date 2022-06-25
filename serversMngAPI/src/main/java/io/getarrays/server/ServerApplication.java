@@ -30,8 +30,8 @@ public class ServerApplication {
 				"Ubuntu Linux",
 				"32 GB",
 				"Personal PC",
-				"http://localhost:8080/server/image/server1.png",
-				Status.SERVER_UP
+				"http://localhost:8080/server/image/server1.jpg",
+				Status.SERVER_DOWN
 				));
 			serverRepo.save(new Server(
 				null,
@@ -39,9 +39,17 @@ public class ServerApplication {
 				"Huawei Phone",
 				"16 GB",
 				"Mobile Phone",
-				"http://localhost:8080/server/image/server1.png",
-				Status.SERVER_UP
+				"http://localhost:8080/server/image/server3.jpg",
+				Status.SERVER_DOWN
 				));
+				serverRepo.save(new Server(
+					null,
+					"192.168.1.43",
+					"LG TV",
+					"4 GB",
+					"Smart TV",
+					"http://localhost:8080/server/image/server2.jpg",
+					Status.SERVER_DOWN));
 		};
 		// aqui pueden ir mas serverRepo.save...
 	};

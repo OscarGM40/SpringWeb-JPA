@@ -403,4 +403,228 @@ Simplemente visito localhost:4200 y debería ver el getAllServers.Incluso veo el
   }
 Lo puedo hacer con TimeUnit.SECONDS.sleep(3) <- dado que elegí SECONDS serán 3 seconds.Fijate que lanza excepción.En cuanto a la UI usó Bootstrap.Apenas son un par de tablas.
 TIP: puedo ver que usa varios <ng-container>.Esta tag es como un <React.Fragment>no indica nada,es un simple <div> en bloque,obviamente,pero me sirve para separar el código semánticamente | mejorar legibilidad del HTML.
-2h
+
+TIP: puedo usar aserción de tipos en una template de Angular(xxx as otherName) cuando quiera usar otro nombre en algo.Por ejemplo,no queremos en la template que se llame appState$ con el simbolo al final
+*ngIf="(appState$ | async) as appState"
+
+Fijate la <td> para el Status que bien le ha quedado:
+   <td>
+     <span class="badge"
+       [ngClass]="[server.status === Status.SERVER_UP ? ' badge-success' : ' badge-danger']">
+      {{ server.status === Status.SERVER_UP ? 'SERVER UP' : 'SERVER DOWN' }}
+     </span>
+   </td>
+
+Recuerda que con [ngClass]="[var === true ? ' class1': ' class2']" puedo meter clases en base a una condicion
+
+				CREANDO OBSERVABLES PROPIOS - BEHAVIOUR SUBJECTS
+
+Fijate que quiero crear un Observable,pero lo quiero en multicasting y con un valor inicial,asi que en vez de hacer obs$ = new Observable lo que hago es crear una instancia de la clase BehaviourSubject y despues a esa instancia le paso el asObservable():
+
+filterSubject = new BehaviourSubject<string>(''); <- strings pues es para almacenar las ipAddress que son strings
+$filterStatus = this.filterSubject.asObservable()
+
+Despues,cada vez que una Entity Server llame al método pingServer añado un valor(ojo,se añade al filterSubject):
+
+  pingServer(ipAddress: string) {
+    this.filterSubject.next(ipAddress);
+
+Fijate como ha tenido que meter el Observable entre parentesis para negarlo:
+  <span *ngIf="isLoading$ | async">Saving...</span>
+  <span *ngIf="!(isLoading$ | async)">Add</span>
+Y lo mismo para desactivar el botón de submit:
+  <button type="submit" [disabled]="serverForm.invalid || (isLoading$ | async)" class="btn btn-success">
+Muy pro el pro. 
+
+					GENERATING A REPORT
+
+IMPORTANTE: fijate que el autor se tomó su tiempo diseñando la aplicación.Esto es algo que debo interiorizar,siempre debe haber un diseño previo a desarrollar una aplicación en la que decida los endpoints,la DB,los modelos,estilos del front,etc... Sin un diseño previo una app seguramente está condenada a fallar. 
+
+NOTA: puedo mandarlo a un Excel o puedo guardarlo como PDF,lo segundo es realmente simple,ya que simplemente con usar window.print() me llevará al menu de impresión y en destino puedo guardarlo como PDF:
+
+  printReport(){
+    /* si quisiera guardarlo como PDF desde el menu de impresión lo puedo guardar como PDF.Fijate que saber esto es importante. */
+    window.print();
+    return;
+    /* para generar un Excel necesito el dataType,despues buscar en el DOM la tabla */
+    let dataType = 'application/vnd.ms-excel.sheet.macroEnabled.12';
+    /* hay que reemplazar los espacios con la  HTMLEntity */
+    let tableSelect = document.getElementById("servers");
+    let tableHtml = tableSelect?.outerHTML.replace(/ /g,'%20');
+    let downloadLink = document.createElement('a');
+    document.body.appendChild(downloadLink);
+    downloadLink.href = 'data:' + dataType + ', ' + tableHtml;
+    downloadLink.download = 'server-report.xls';
+    // tras hacer el click borro el <anchor>
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+  }
+
+					NOTIFICACIONES
+
+Para las notificaciones,dado que estoy en Angular,voy a usar la lib 'angular-notifier',la cual es muy usada,customizable y fácil de usar.Para instalarla:
+
+>npm i angular-notifier && ng s <- instalo y levanto el server de nuevo
+
+Para hacerla accesible globalmente hay que añadir el NotifierModule al módulo general en los imports.Sin embargo,es muy común pasarle una config:
+
+@NgModule({
+  imports: [
+   ... 
+   NotifierModule.withConfig({
+    ...config })
+]
+Despues hay que usar el componente <notifier-container> en la template.Se recomienda hacerlo en la última linea de la template app.component.html
+
+Sin embargo,aqui crearemos un modulo entero para las notificaciones y lo importaremos en cada uno que las quiera usar,haciendolo más eficiente que importarlo en todos.
+
+En un archivo notifier.module.ts:
+
+mport { NgModule } from '@angular/core';
+import { NotifierModule, NotifierOptions } from 'angular-notifier';
+
+const customNotifierOptions: NotifierOptions = {
+  position: {
+    horizontal: {
+      position: 'left',
+      distance: 150,
+    },
+    vertical: {
+      position: 'bottom',
+      distance: 12,
+      gap: 10,
+    },
+  },
+  theme: 'material',
+  behaviour: {
+    autoHide: 5000,
+    onClick: 'hide',
+    onMouseover: 'pauseAutoHide',
+    showDismissButton: true,
+    stacking: 4,
+  },
+  animations: {
+    enabled: true,
+    show: {
+      preset: 'slide',
+      speed: 300,
+      easing: 'ease',
+    },
+    hide: {
+      preset: 'fade',
+      speed: 300,
+      easing: 'ease',
+      offset: 50,
+    },
+    shift: {
+      speed: 300,
+      easing: 'ease',
+    },
+    overlap: 150,
+  },
+};
+
+@NgModule({
+  imports: [NotifierModule.withConfig(customNotifierOptions)],
+  exports: [NotifierModule],
+})
+export class NotificationModule {}
+Fijate como he creado un modulo que se importa hacia si mismo la libreria y la exporta,de esta forma pueden pedir esta libreria quienes quieran y no obligo a que todo modulo la importe.Muy bueno,joder,asinto.
+
+IMPORTANTE: aún faltan los estilos(que los tengo en node_modules/libreria).Simplemente los requiero desde alli con @import ruta en el styles.css.Fijate que esto es básico:
+
+@import '~angular-notifier/styles'; <- la ~ representa node_modules y no necesito que sea ~/angular-notifier/styles,puedo omitir la '/' despues de ~.
+
+Despues puedo usarlo inyectando el Service que ya trae la libreria:
+  // forma UNO para el angular-notifier
+  private readonly notifier: NotifierService;
+
+  constructor(
+    private serverService: ServerService,
+    private notifierService: NotifierService
+  ) {
+    this.notifier = notifierService;
+  }
+
+Y realmente no hace falta crear una propiedad,con esto me vale:
+constructor( private notifier: NotifierService) <- más simple,que crear una propiedad para asignarle otra,accedo por la inyectada y ya.
+
+this.notifier.notify('success', 'Servers loaded');
+
+Y nosotros lo que vamos a hacer es crear nuestro propio Servicio(que inyectará al suyo y expondrá varios tipos de notification).
+
+import { Injectable } from "@angular/core";
+import { NotifierService } from "angular-notifier";
+
+@Injectable({ providedIn: "root", })
+export class NotificationService {
+  private readonly notifier: NotifierService;
+
+  constructor(notifierService: NotifierService) {
+    this.notifier = notifierService;
+  }
+
+  onDefault(message: string): void {
+    this.notifier.notify(TypeOfNotification.DEFAULT, message);
+  }
+
+  onSuccess(message: string): void {
+    this.notifier.notify(TypeOfNotification.SUCCESS, message);
+  }
+
+  onError(message: string): void {
+    this.notifier.notify(TypeOfNotification.ERROR, message);
+  }
+
+  onWarning(message: string): void {
+    this.notifier.notify(TypeOfNotification.WARNING, message);
+  }
+
+  onInfo(message: string): void {
+    this.notifier.notify(TypeOfNotification.INFO, message);
+  }
+}
+
+enum TypeOfNotification {
+  DEFAULT = "default",
+  SUCCESS = "success",
+  ERROR = "error",
+  WARNING = "warning",
+  INFO = "info",
+}
+De nuevo puedo observar como se puede programar lo que se quiera,con el conocimiento adecuado.En este caso cogemos un Service built-in y le wrapeamos el nuestro.Fijate que también creé un modulo para un Module cualquiera que lo importa y exporta haciendo la elección de importarlo que recaiga en cada modulo,en vez de forzada como venia.
+
+					CHANGE DETECTION STRATEGIES
+
+NOTA: los beneficios de la programación reactiva son un menor numero de accesos alas comprobaciones de cambios en Angular(y seguramente en React).
+Esto se puede ver ya que cambiamos de strategy al usar Observables:
+
+DEFAULT STRATEGY				ONPUSH
+checkAlways strategy            @Input
+check for every change          Event Emits
+								Observable Emits
+
+Puedo ver que los beneficios de usar programación reactiva son un cambio en la estrategia que usará el framework para detectar los cambios.En resumen,si uso programación reactiva los disparo yo,y no tiene que estar Angular comprobando todo(entiendo que comprobará muchas cosas si le dejo a él hacerlo)
+TIP: recuerda que el pipe async es parte de un approach reactivo
+
+
+IMPORTANTE: tengo que cambiar la estrategia en el componente(ChangeDetectionStrategy viene de @angular/core:
+@Component({
+  selector: 'app-root',
+  templateUrl: './app.component.html',
+  styleUrls: ['./app.component.css'],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+})
+export class AppComponent implements OnInit {
+name = 'Junior'; <- importante,con esta estrategia cualquier reasignación no la va a pillar Angular,sólo va a coger la primera asignación(es como que ya no va a mirar por los cambios él,sino que los disparo yo con EventEmitters,Observables y @Input).Investigar más.Investigar como se hace esto en React
+
+NOTA sobre React.Memo: React.memo hace una 'shallow comparison' de las props de un componente.Si no cambiaron renderizará la ultima copia en memoria,en vez de re-renderizar el componente y sus calculos asociados a esto.Fijate que si un componente memorizado tiene useState,o useReducer o useContext/useSelector(acceso al store) y esto cambia,disparará un re-render en el componente,independiente de si las props son iguales,el re-render ocurrirá.Además,la comparación no es profunda,aunque puedo arreglarlo pasando una funcion comparadora al React.memo:
+export default React.memo(MyComponent,areEqual);
+
+function areEqual(prevProps, nextProps){
+  ...
+} <- comprobar en nuestro proyecto cuando puedo memorizar un componente y sea eficiente porque las props no cambien.Diria que en varios lados.
+
+NOTA: obviamente Angular está en ChangeDetectionStrategy.DEFAULT por defecto
+
+Por último,este aproach de programación reactiva + cambio de estrategia realmente no es necesario en aplicaciones pequeñas,que no tengan carga,ya que irán fluidas per se.Estamos hablando de apps grandes y no lo que hemos hecho.

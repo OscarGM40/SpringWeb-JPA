@@ -36,7 +36,8 @@ public class ServerController {
 
   @GetMapping("/list")
   public ResponseEntity<Response> getServers() throws InterruptedException {
-    TimeUnit.SECONDS.sleep(3);
+    TimeUnit.SECONDS.sleep(1);
+    // throw new InterruptedException("Error forced");
     return ResponseEntity.ok(
         Response.builder()
             .timeStamp(LocalDateTime.now())
@@ -99,7 +100,7 @@ public class ServerController {
 
   @GetMapping(path = "/image/{fileName}",produces = MediaType.IMAGE_PNG_VALUE)
   public byte[] getServerImage(@PathVariable("fileName") String fileName) throws IOException {
-    return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/Descargas/" + fileName));
+    return Files.readAllBytes(Paths.get(System.getProperty("user.home") + "/Imágenes/ImagenesVarias/" + fileName));
   }
 
 }
